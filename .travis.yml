@@ -5,3 +5,5 @@ sudo: false
 install:
   - pip install .
 
+script:
+  - trial benchmark
