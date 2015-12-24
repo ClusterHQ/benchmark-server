@@ -21,9 +21,7 @@ setup(
     ],
     name='benchmark-server',
     description="Persist benchmarking results",
-    install_requires=[
-        "klein"
-    ],
+    install_requires=read('requirements.txt'),
     extras_require={},
     entry_points={},
     keywords="",
