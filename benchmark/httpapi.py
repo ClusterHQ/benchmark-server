@@ -64,6 +64,57 @@ class DummyBackend(object):
         return fail(ResultNotFound())
 
 
+@implementer(IBackend)
+class InMemoryBackend(object):
+    """
+    The backend that simply drops all results.
+
+    :ivar dict results: Stored results by their identifiers.
+    """
+    def __init__(self):
+        self.results = {}
+
+    def store(self, result):
+        """
+        Store a single benchmarking result and return its identifier.
+
+        :param dict result: The result in the JSON compatible format.
+        :return: A Deferred that produces an identifier for the stored
+            result.
+        """
+        id = uuid4().hex
+        self.results[id] = result
+        return succeed(id)
+
+    def retrieve(self, id):
+        """
+        Retrive a result by the given identifier.
+        """
+        try:
+            return self.results[id]
+        except KeyError:
+            return fail(ResultNotFound())
+
+    def query(self, filter):
+        """
+        Return matching results.
+        """
+        matching = [
+            r for r in self.results.viewvalues()
+            if filter.viewitems() <= r.viewitems()
+        ]
+        return succeed(matching)
+
+    def delete(self, id):
+        """
+        Delete a result by the given identifier.
+        """
+        try:
+            del self.results[id]
+        except KeyError:
+            return fail(ResultNotFound())
+
+
 class BenchmarkAPI_V1(object):
     """
     API for storing and accessing benchmarking results.
@@ -118,7 +169,7 @@ def create_api_service(endpoint):
     :return: Service that will listen on the endpoint using HTTP API server.
     """
     api_root = Resource()
-    api = BenchmarkAPI_V1(DummyBackend())
+    api = BenchmarkAPI_V1(InMemoryBackend())
     api_root.putChild('v1', api.app.resource())
 
     return StreamServerEndpointService(endpoint, Site(api_root))
