@@ -166,6 +166,45 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NO_CONTENT)
         return self.backend.delete(id)
 
+    @app.route("/query", methods=['POST'])
+    def query(self, request):
+        """
+        Query the previously stored benchmarking results.
+
+        Returns results that are supersets of a JSON document
+        provided in the request body.
+        Number of the returned results can be limited using
+        "limit" query argumnet.
+
+        :param twisted.web.http.Request request: The request.
+        """
+        request.setHeader(b'content-type', b'application/json')
+        try:
+            json = loads(request.content.read())
+        except ValueError as e:
+            err(e, "failed to parse filter")
+            request.setResponseCode(BAD_REQUEST)
+            return dumps({"message": e.message})
+
+        filter = json.get('filter', {})
+        limit = json.get('limit', '0')
+        try:
+            limit = int(limit)
+        except ValueError as e:
+            err(e, "limit is not an integer: {}".format(limit))
+            request.setResponseCode(BAD_REQUEST)
+            return dumps({"message": e.message})
+
+        d = self.backend.query(filter, limit)
+
+        def got_results(results):
+            msg("got {} results (limit = {})".format(len(results), limit))
+            result = {"version": self.version, "results": results}
+            return dumps(result)
+
+        d.addCallback(got_results)
+        return d
+
 
 def create_api_service(endpoint):
     """
