@@ -5,6 +5,7 @@ A HTTP REST API for storing benchmark results.
 
 import sys
 
+from collections import OrderedDict
 from json import dumps, loads
 from uuid import uuid4
 from urlparse import urljoin
@@ -40,7 +41,7 @@ class InMemoryBackend(object):
     :ivar dict results: Stored results by their identifiers.
     """
     def __init__(self):
-        self._results = {}
+        self._results = OrderedDict()
 
     def store(self, result):
         """
@@ -63,14 +64,16 @@ class InMemoryBackend(object):
         except KeyError:
             return fail(ResultNotFound())
 
-    def query(self, filter):
+    def query(self, filter, limit):
         """
         Return matching results.
         """
         matching = [
-            r for r in self._results.viewvalues()
+            r for r in reversed(self._results.values())
             if filter.viewitems() <= r.viewitems()
         ]
+        if limit > 0:
+            matching = matching[:limit]
         return succeed(matching)
 
     def delete(self, id):
