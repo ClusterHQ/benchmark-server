@@ -272,3 +272,132 @@ class BenchmarkAPITests(TestCase):
         req = self.agent.request("DELETE", location)
         req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
+
+    BRANCH1_RESULT1 = {u"branch": u"1", u"value": 100}
+    BRANCH1_RESULT2 = {u"branch": u"1", u"value": 120}
+    BRANCH2_RESULT1 = {u"branch": u"2", u"value": 110}
+
+    def setup_results(self):
+        """
+        Submit some results for testing various queries against them.
+        """
+        results = [
+            self.BRANCH1_RESULT1, self.BRANCH1_RESULT2, self.BRANCH2_RESULT1
+        ]
+
+        def chained_submit(_, result):
+            """
+            Discard result of a previous submit and do a new one.
+            """
+            return self.submit(result)
+
+        # Sequentially submit the results.
+        d = succeed(None)
+        for result in results:
+            d.addCallback(chained_submit, result)
+        return d
+
+    def run_query(self, ignored, filter=None, limit=None):
+        """
+        Invoke the query interface of the HTTP API.
+
+        :param dict filter: The data that the results must include.
+        :param int limit: The limit on how many results to turn.
+        :return" Deferred that fires with content of a response.
+        """
+        query = {}
+        if filter:
+            query["filter"] = filter
+        if limit:
+            query["limit"] = limit
+        json = StringProducer(dumps(query))
+        req = self.agent.request("POST", "/query", bodyProducer=json)
+        req.addCallback(self.check_response_code, 200)
+        req.addCallback(client.readBody)
+        return req
+
+    def check_query_result(self, body, expected):
+        """
+        Check that the given response content is valid JSON
+        that contains the expect result.
+
+        :param str body: The content to check.
+        :param expected: The expected results.
+        :type expected: list of dict
+        """
+        data = loads(body)
+        self.assertIn('version', data)
+        self.assertEqual(data['version'], 1)
+        self.assertIn('results', data)
+        results = data['results']
+        self.assertItemsEqual(results, expected)
+
+    def test_query_no_filter_no_limit(self):
+        """
+        All results are returned if no filter and no limit are given.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query)
+        d.addCallback(
+            self.check_query_result,
+            expected=[
+                self.BRANCH1_RESULT1, self.BRANCH1_RESULT2,
+                self.BRANCH2_RESULT1
+            ],
+        )
+        return d
+
+    def test_query_with_filter(self):
+        """
+        All matching results are returned if filter is given.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": u"1"})
+        d.addCallback(
+            self.check_query_result,
+            expected=[
+                self.BRANCH1_RESULT1, self.BRANCH1_RESULT2,
+            ],
+        )
+        d.addCallback(self.run_query, filter={u"branch": u"2"})
+        d.addCallback(
+            self.check_query_result,
+            expected=[
+                self.BRANCH2_RESULT1
+            ],
+        )
+        return d
+
+    def test_query_with_limit(self):
+        """
+        The latest ``limit`` results are returned if no filter is set
+        but the limit is specified and the total number of the results
+        is greater than the limit.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=2)
+        d.addCallback(
+            self.check_query_result,
+            expected=[
+                self.BRANCH1_RESULT2,
+                self.BRANCH2_RESULT1
+            ],
+        )
+        return d
+
+    def test_query_with_filter_and_limit(self):
+        """
+        The expected number of matching results is returned
+        if the total number of such results is greater than
+        the limit.  The returned results are the latest among
+        the matching results.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": u"1"}, limit=1)
+        d.addCallback(
+            self.check_query_result,
+            expected=[
+                self.BRANCH1_RESULT2,
+            ],
+        )
+        return d
