@@ -72,7 +72,7 @@ class InMemoryBackend(object):
     :ivar dict results: Stored results by their identifiers.
     """
     def __init__(self):
-        self.results = {}
+        self._results = {}
 
     def store(self, result):
         """
@@ -83,7 +83,7 @@ class InMemoryBackend(object):
             result.
         """
         id = uuid4().hex
-        self.results[id] = result
+        self._results[id] = result
         return succeed(id)
 
     def retrieve(self, id):
@@ -91,7 +91,7 @@ class InMemoryBackend(object):
         Retrive a result by the given identifier.
         """
         try:
-            return self.results[id]
+            return self._results[id]
         except KeyError:
             return fail(ResultNotFound())
 
@@ -100,7 +100,7 @@ class InMemoryBackend(object):
         Return matching results.
         """
         matching = [
-            r for r in self.results.viewvalues()
+            r for r in self._results.viewvalues()
             if filter.viewitems() <= r.viewitems()
         ]
         return succeed(matching)
@@ -110,7 +110,7 @@ class InMemoryBackend(object):
         Delete a result by the given identifier.
         """
         try:
-            del self.results[id]
+            del self._results[id]
         except KeyError:
             return fail(ResultNotFound())
 

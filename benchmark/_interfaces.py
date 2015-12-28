@@ -1,4 +1,4 @@
-# Copyright 2015 ClusterHQ Inc.  See LICENSE file for details.
+# Copyright ClusterHQ Inc.  See LICENSE file for details.
 """
 Interfaces for the benchmarking results server.
 """

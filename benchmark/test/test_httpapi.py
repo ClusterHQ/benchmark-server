@@ -46,7 +46,7 @@ class TestEndpoint(TCP4ServerEndpoint):
         return d
 
 
-class BenchmarkAPITest(unittest.TestCase):
+class BenchmarkAPITests(TestCase):
     """
     Tests for BenchmarkAPI.
     """
@@ -116,8 +116,8 @@ class BenchmarkAPITest(unittest.TestCase):
         req = self.test_submit_response_format()
 
         def check_backend(id):
-            self.assertIn(id, self.backend.results)
-            self.assertEqual(self.RESULT, self.backend.results[id])
+            self.assertIn(id, self.backend._results)
+            self.assertEqual(self.RESULT, self.backend._results[id])
 
         req.addCallback(check_backend)
         return req
