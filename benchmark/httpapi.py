@@ -31,40 +31,6 @@ class ResultNotFound(Exception):
 
 
 @implementer(IBackend)
-class DummyBackend(object):
-    """
-    The backend that simply drops all results.
-    """
-    def store(self, result):
-        """
-        Pretend to store a single benchmarking result.
-
-        :param dict result: The result in the JSON compatible format.
-        :return: A Deferred that produces an identifier for the stored
-            result.
-        """
-        return succeed(uuid4().hex)
-
-    def retrieve(self, id):
-        """
-        Just fail.
-        """
-        return fail(ResultNotFound())
-
-    def query(self, filter):
-        """
-        Return an empty result.
-        """
-        return succeed(list())
-
-    def delete(self, id):
-        """
-        Just fail.
-        """
-        return fail(ResultNotFound())
-
-
-@implementer(IBackend)
 class InMemoryBackend(object):
     """
     The backend that simply drops all results.
