@@ -6,7 +6,9 @@ from twisted.internet.defer import Deferred, succeed
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.web import server, client
 from twisted.web.iweb import IBodyProducer
-from twisted.trial import unittest
+
+from testtools import TestCase
+from testtools.deferredruntest import AsynchronousDeferredRunTest
 
 from zope.interface import implementer
 
@@ -50,10 +52,16 @@ class BenchmarkAPITests(TestCase):
     """
     Tests for BenchmarkAPI.
     """
+    # The default timeout of 0.005 seconds is not always enough,
+    # because we test HTTP requests via an actual TCP/IP connection.
+    run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
+
     RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
     RESULT_JSON = dumps(RESULT)
 
     def setUp(self):
+        super(BenchmarkAPITests, self).setUp()
+
         self.backend = InMemoryBackend()
         api = BenchmarkAPI_V1(self.backend)
         site = server.Site(api.app.resource())
@@ -77,6 +85,7 @@ class BenchmarkAPITests(TestCase):
         return listening
 
     def tearDown(self):
+        super(BenchmarkAPITests, self).tearDown()
         return self.service.stopService()
 
     def check_response_code(self, response, expected_code):
