@@ -5,8 +5,9 @@ A HTTP REST API for storing benchmark results.
 
 import sys
 
-from uuid import uuid4
 from json import dumps, loads
+from uuid import uuid4
+from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
 from twisted.internet.defer import Deferred, fail, succeed
@@ -102,7 +103,7 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NOT_FOUND)
         return ""
 
-    @app.route("/submit", methods=['POST'])
+    @app.route("/benchmark-results", methods=['POST'])
     def submit(self, request):
         """
         Store a new benchmarking result.
@@ -122,7 +123,11 @@ class BenchmarkAPI_V1(object):
         def stored(id):
             msg("stored result with id {}".format(id))
             result = {"version": self.version, "id": id}
-            return dumps(result)
+            response = dumps(result)
+            location = urljoin(request.path + '/', id)
+            request.setHeader(b'Location', location)
+            request.setResponseCode(CREATED)
+            return response
 
         d.addCallback(stored)
         return d

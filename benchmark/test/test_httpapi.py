@@ -1,10 +1,11 @@
 from json import dumps, loads
+from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
 from twisted.internet import reactor, endpoints
 from twisted.internet.defer import Deferred, succeed
 from twisted.internet.endpoints import TCP4ServerEndpoint
-from twisted.web import server, client
+from twisted.web import client, http, server
 from twisted.web.iweb import IBodyProducer
 
 from testtools import TestCase
@@ -105,8 +106,9 @@ class BenchmarkAPITests(TestCase):
         Valid JSON can be successfully submitted.
         """
         result = StringProducer(self.RESULT_JSON)
-        req = self.agent.request("POST", "/submit", bodyProducer=result)
-        req.addCallback(self.check_response_code, 200)
+        req = self.agent.request("POST", "/benchmark-results",
+                                 bodyProducer=result)
+        req.addCallback(self.check_response_code, http.CREATED)
         return req
 
     def test_submit_response_format(self):
@@ -116,6 +118,36 @@ class BenchmarkAPITests(TestCase):
         req = self.test_submit_success()
         req.addCallback(client.readBody)
         req.addCallback(self.check_submit_response_body)
+        return req
+
+    def test_submit_response_location_header(self):
+        """
+        Returned Location header has the expected value.
+        """
+        # This is not a real array, but a well-known trick
+        # to set an outer variable from an inner function.
+        response = [None]
+        req = self.test_submit_success()
+
+        def save_response(_response):
+            response[0] = _response
+            return _response
+
+        req.addCallback(save_response)
+        req.addCallback(client.readBody)
+        req.addCallback(self.check_submit_response_body)
+
+        def check_location(id):
+            expected_location = urljoin(
+                response[0].request.absoluteURI + '/',
+                id
+            )
+            self.assertEqual(
+                expected_location,
+                response[0].headers.getRawHeaders(b'Location')[0]
+            )
+
+        req.addCallback(check_location)
         return req
 
     def test_submit_persists(self):
