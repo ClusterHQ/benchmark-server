@@ -136,28 +136,18 @@ class BenchmarkAPITests(TestCase):
         """
         Returned Location header has the expected value.
         """
-        # This is not a real array, but a well-known trick
-        # to set an outer variable from an inner function.
-        response = [None]
         req = self.submit(self.RESULT)
 
-        def save_response(_response):
-            response[0] = _response
-            return _response
-
-        req.addCallback(save_response)
-        req.addCallback(client.readBody)
-        req.addCallback(self.parse_submit_response_body)
-
-        def check_location(id):
-            expected_location = urljoin(
-                response[0].request.absoluteURI + '/',
-                id
+        def check_location(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            base_uri = response.request.absoluteURI + '/'
+            d = client.readBody(response)
+            d.addCallback(lambda body: loads(body)['id'])
+            d.addCallback(lambda id: urljoin(base_uri, id))
+            d.addCallback(
+                lambda expected: self.assertEqual(expected, location)
             )
-            self.assertEqual(
-                expected_location,
-                response[0].headers.getRawHeaders(b'Location')[0]
-            )
+            return d
 
         req.addCallback(check_location)
         return req
