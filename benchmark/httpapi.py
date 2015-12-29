@@ -14,8 +14,9 @@ from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.task import react
 from twisted.python.log import startLogging, err, msg
 from twisted.python.usage import Options, UsageError
-from twisted.web.server import Site
+from twisted.web.http import BAD_REQUEST, CREATED, NOT_FOUND
 from twisted.web.resource import Resource
+from twisted.web.server import Site
 
 from klein import Klein
 
@@ -98,7 +99,7 @@ class BenchmarkAPI_V1(object):
 
     @app.handle_errors(ResultNotFound)
     def _not_found(self, request, failure):
-        request.setResponseCode(404)
+        request.setResponseCode(NOT_FOUND)
         return ""
 
     @app.route("/submit", methods=['POST'])
@@ -113,7 +114,7 @@ class BenchmarkAPI_V1(object):
             json = loads(request.content.read())
         except ValueError as e:
             err(e, "failed to parse result")
-            request.setResponseCode(400)
+            request.setResponseCode(BAD_REQUEST)
             return dumps({"message": e.message})
 
         d = self.backend.store(json)
