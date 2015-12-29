@@ -59,7 +59,7 @@ class InMemoryBackend(object):
         Retrive a result by the given identifier.
         """
         try:
-            return self._results[id]
+            return succeed(self._results[id])
         except KeyError:
             return fail(ResultNotFound())
 
@@ -79,6 +79,7 @@ class InMemoryBackend(object):
         """
         try:
             del self._results[id]
+            return succeed(None)
         except KeyError:
             return fail(ResultNotFound())
 
