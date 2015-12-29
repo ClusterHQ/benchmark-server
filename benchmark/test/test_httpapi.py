@@ -82,11 +82,8 @@ class BenchmarkAPITests(TestCase):
         endpoint = TestEndpoint(self.reactor, listening)
         self.service = StreamServerEndpointService(endpoint, site)
         self.service.startService()
+        self.addCleanup(self.service.stopService)
         return listening
-
-    def tearDown(self):
-        super(BenchmarkAPITests, self).tearDown()
-        return self.service.stopService()
 
     def submit(self, result):
         """
