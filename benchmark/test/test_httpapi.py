@@ -169,7 +169,7 @@ class BenchmarkAPITests(TestCase):
 
     def test_submit_persists(self):
         """
-        Submitted result is stored in the backend and it can be retrived
+        Submitted result is stored in the backend and it can be retrieved
         using a URI in the Location header.
         """
         req = self.submit(self.RESULT)
@@ -222,7 +222,7 @@ class BenchmarkAPITests(TestCase):
 
     def test_get_deleted(self):
         """
-        Deleted result can not be retrived.
+        Deleted result can not be retrieved.
         """
         req = self.submit(self.RESULT)
 
