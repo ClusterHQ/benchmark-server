@@ -58,7 +58,6 @@ class BenchmarkAPITests(TestCase):
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
     RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
-    RESULT_JSON = dumps(RESULT)
 
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
@@ -89,12 +88,22 @@ class BenchmarkAPITests(TestCase):
         super(BenchmarkAPITests, self).tearDown()
         return self.service.stopService()
 
+    def submit(self, result):
+        """
+        Submit a result.
+        """
+        json = dumps(result)
+        body = StringProducer(json)
+        req = self.agent.request("POST", "/benchmark-results",
+                                 bodyProducer=body)
+        return req
+
     def check_response_code(self, response, expected_code):
         self.assertEqual(
             response.code, expected_code, "Incorrect response code")
         return response
 
-    def check_submit_response_body(self, body):
+    def parse_submit_response_body(self, body):
         data = loads(body)
         self.assertIn('version', data)
         self.assertEqual(data['version'], 1)
@@ -105,9 +114,7 @@ class BenchmarkAPITests(TestCase):
         """
         Valid JSON can be successfully submitted.
         """
-        result = StringProducer(self.RESULT_JSON)
-        req = self.agent.request("POST", "/benchmark-results",
-                                 bodyProducer=result)
+        req = self.submit(self.RESULT)
         req.addCallback(self.check_response_code, http.CREATED)
         return req
 
@@ -115,9 +122,9 @@ class BenchmarkAPITests(TestCase):
         """
         Returned content is the expected JSON.
         """
-        req = self.test_submit_success()
+        req = self.submit(self.RESULT)
         req.addCallback(client.readBody)
-        req.addCallback(self.check_submit_response_body)
+        req.addCallback(self.parse_submit_response_body)
         return req
 
     def test_submit_response_location_header(self):
@@ -127,7 +134,7 @@ class BenchmarkAPITests(TestCase):
         # This is not a real array, but a well-known trick
         # to set an outer variable from an inner function.
         response = [None]
-        req = self.test_submit_success()
+        req = self.submit(self.RESULT)
 
         def save_response(_response):
             response[0] = _response
@@ -135,7 +142,7 @@ class BenchmarkAPITests(TestCase):
 
         req.addCallback(save_response)
         req.addCallback(client.readBody)
-        req.addCallback(self.check_submit_response_body)
+        req.addCallback(self.parse_submit_response_body)
 
         def check_location(id):
             expected_location = urljoin(
@@ -154,7 +161,9 @@ class BenchmarkAPITests(TestCase):
         """
         Submitted result is stored in the backend.
         """
-        req = self.test_submit_response_format()
+        req = self.submit(self.RESULT)
+        req.addCallback(client.readBody)
+        req.addCallback(self.parse_submit_response_body)
 
         def check_backend(id):
             self.assertIn(id, self.backend._results)
