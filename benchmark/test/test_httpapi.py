@@ -96,11 +96,19 @@ class BenchmarkAPITests(TestCase):
         return req
 
     def check_response_code(self, response, expected_code):
+        """
+        Response has the expected reponse code.
+        """
         self.assertEqual(
             response.code, expected_code, "Incorrect response code")
         return response
 
     def parse_submit_response_body(self, body):
+        """
+        Check that response to a submit request has the expected
+        structure and version.
+        Returns an identifier assigned to the submitted object.
+        """
         data = loads(body)
         self.assertIn('version', data)
         self.assertEqual(data['version'], 1)
@@ -157,6 +165,7 @@ class BenchmarkAPITests(TestCase):
     def check_received_result(self, response, expected_result):
         """
         Response body contains the expected result.
+        If it does, return the JSON decoded response body.
         """
         got_body = client.readBody(response)
 
