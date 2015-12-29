@@ -213,6 +213,15 @@ class BenchmarkAPITests(TestCase):
         req.addCallback(retrieve_twice)
         return req
 
+    def test_get_nonexistent(self):
+        """
+        Getting non-existent resource is correctly handled.
+        """
+        location = "/benchmark-results/foobar"
+        req = self.agent.request("GET", location)
+        req.addCallback(self.check_response_code, http.NOT_FOUND)
+        return req
+
     def test_delete(self):
         """
         Submitted result is stored in the backend and it can be deleted
@@ -263,4 +272,13 @@ class BenchmarkAPITests(TestCase):
             return deleted2
 
         req.addCallback(delete_twice)
+        return req
+
+    def test_delete_nonexistent(self):
+        """
+        Getting non-existent resource is correctly handled.
+        """
+        location = "/benchmark-results/foobar"
+        req = self.agent.request("DELETE", location)
+        req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
