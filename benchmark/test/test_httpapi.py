@@ -2,7 +2,7 @@ from json import dumps, loads
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
-from twisted.internet import reactor, endpoints
+from twisted.internet import endpoints
 from twisted.internet.defer import Deferred, succeed
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.web import client, http, server
@@ -70,16 +70,16 @@ class BenchmarkAPITests(TestCase):
             addr = listening_port.getHost()
             self.agent = client.ProxyAgent(
                 endpoints.TCP4ClientEndpoint(
-                    reactor,
+                    self.reactor,
                     addr.host,
                     addr.port,
                 ),
-                reactor,
+                self.reactor,
             )
 
         listening = Deferred()
         listening.addCallback(make_client)
-        endpoint = TestEndpoint(reactor, listening)
+        endpoint = TestEndpoint(self.reactor, listening)
         self.service = StreamServerEndpointService(endpoint, site)
         self.service.startService()
         return listening
