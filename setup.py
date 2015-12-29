@@ -21,10 +21,11 @@ setup(
     ],
     name='benchmark-server',
     description="Persist benchmarking results",
-    install_requires=[
-        "klein"
-    ],
-    extras_require={},
+    install_requires=read('requirements.txt'),
+    extras_require={
+        # This extra is for developers who need to work on the code.
+        "dev": read('dev-requirements.txt'),
+    },
     entry_points={},
     keywords="",
     license="Apache 2.0",
