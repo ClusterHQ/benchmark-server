@@ -157,17 +157,104 @@ class BenchmarkAPITests(TestCase):
         req.addCallback(check_location)
         return req
 
+    def check_received_result(self, response, expected_result):
+        """
+        Response body contains the expected result.
+        """
+        got_body = client.readBody(response)
+
+        def compare(body):
+            result = loads(body)
+            self.assertEqual(expected_result, result)
+            return result
+
+        return got_body.addCallback(compare)
+
     def test_submit_persists(self):
         """
-        Submitted result is stored in the backend.
+        Submitted result is stored in the backend and it can be retrived
+        using a URI in the Location header.
         """
         req = self.submit(self.RESULT)
-        req.addCallback(client.readBody)
-        req.addCallback(self.parse_submit_response_body)
 
-        def check_backend(id):
-            self.assertIn(id, self.backend._results)
-            self.assertEqual(self.RESULT, self.backend._results[id])
+        def retrieve(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            return self.agent.request("GET", location)
 
-        req.addCallback(check_backend)
+        req.addCallback(retrieve)
+        req.addCallback(self.check_response_code, http.OK)
+        req.addCallback(self.check_received_result, self.RESULT)
+        return req
+
+    def test_get_idempotent(self):
+        """
+        Retrieving a result does not modify or remove it.
+        """
+        req = self.submit(self.RESULT)
+
+        def retrieve_twice(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            got1 = self.agent.request("GET", location)
+            got1.addCallback(self.check_response_code, http.OK)
+            got1.addCallback(self.check_received_result, self.RESULT)
+            got2 = got1.addCallback(
+                lambda _: self.agent.request("GET", location)
+            )
+            got2.addCallback(self.check_response_code, http.OK)
+            got2.addCallback(self.check_received_result, self.RESULT)
+            return got2
+
+        req.addCallback(retrieve_twice)
+        return req
+
+    def test_delete(self):
+        """
+        Submitted result is stored in the backend and it can be deleted
+        using a URI in the Location header.
+        """
+        req = self.submit(self.RESULT)
+
+        def delete(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            deleted = self.agent.request("DELETE", location)
+            deleted.addCallback(self.check_response_code, http.NO_CONTENT)
+            return deleted
+
+        req.addCallback(delete)
+        return req
+
+    def test_get_deleted(self):
+        """
+        Deleted result can not be retrived.
+        """
+        req = self.submit(self.RESULT)
+
+        def delete_and_get(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            deleted = self.agent.request("DELETE", location)
+            got = deleted.addCallback(
+                lambda _: self.agent.request("GET", location)
+            )
+            got.addCallback(self.check_response_code, http.NOT_FOUND)
+            return got
+
+        req.addCallback(delete_and_get)
+        return req
+
+    def test_delete_deleted(self):
+        """
+        Deleted result can not be deleted again.
+        """
+        req = self.submit(self.RESULT)
+
+        def delete_twice(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            deleted1 = self.agent.request("DELETE", location)
+            deleted2 = deleted1.addCallback(
+                lambda _: self.agent.request("DELETE", location)
+            )
+            deleted2.addCallback(self.check_response_code, http.NOT_FOUND)
+            return deleted2
+
+        req.addCallback(delete_twice)
         return req

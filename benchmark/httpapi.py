@@ -15,7 +15,7 @@ from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.task import react
 from twisted.python.log import startLogging, err, msg
 from twisted.python.usage import Options, UsageError
-from twisted.web.http import BAD_REQUEST, CREATED, NOT_FOUND
+from twisted.web.http import BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
@@ -105,9 +105,9 @@ class BenchmarkAPI_V1(object):
         return ""
 
     @app.route("/benchmark-results", methods=['POST'])
-    def submit(self, request):
+    def post(self, request):
         """
-        Store a new benchmarking result.
+        Post a new benchmarking result.
 
         :param twisted.web.http.Request request: The request.
         """
@@ -132,6 +132,36 @@ class BenchmarkAPI_V1(object):
 
         d.addCallback(stored)
         return d
+
+    @app.route("/benchmark-results/<string:id>", methods=['GET'])
+    def get(self, request, id):
+        """
+        Get a previously stored benchmarking result by its ID.
+
+        :param twisted.web.http.Request request: The request.
+        :param str id: The identifier.
+        """
+        request.setHeader(b'content-type', b'application/json')
+        d = self.backend.retrieve(id)
+
+        def retrieved(result):
+            response = dumps(result)
+            return response
+
+        d.addCallback(retrieved)
+        return d
+
+    @app.route("/benchmark-results/<string:id>", methods=['DELETE'])
+    def delete(self, request, id):
+        """
+        Delete a previously stored benchmarking result by its ID.
+
+        :param twisted.web.http.Request request: The request.
+        :param str id: The identifier.
+        """
+        request.setHeader(b'content-type', b'application/json')
+        request.setResponseCode(NO_CONTENT)
+        return self.backend.delete(id)
 
 
 def create_api_service(endpoint):
