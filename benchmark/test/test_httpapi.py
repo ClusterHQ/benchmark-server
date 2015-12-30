@@ -273,9 +273,9 @@ class BenchmarkAPITests(TestCase):
         req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
 
-    BRANCH1_RESULT1 = {u"branch": u"1", u"value": 100}
-    BRANCH1_RESULT2 = {u"branch": u"1", u"value": 120}
-    BRANCH2_RESULT1 = {u"branch": u"2", u"value": 110}
+    BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100}
+    BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120}
+    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110}
 
     def setup_results(self):
         """
@@ -307,11 +307,14 @@ class BenchmarkAPITests(TestCase):
         """
         query = {}
         if filter:
-            query["filter"] = filter
+            query = filter.copy()
         if limit:
             query["limit"] = limit
-        json = StringProducer(dumps(query))
-        req = self.agent.request("POST", "/query", bodyProducer=json)
+        if query:
+            query_string = "?" + urlencode(query)
+        else:
+            query_string = ""
+        req = self.agent.request("GET", "/benchmark-results" + query_string)
         req.addCallback(self.check_response_code, 200)
         req.addCallback(client.readBody)
         return req
