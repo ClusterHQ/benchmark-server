@@ -17,7 +17,9 @@ from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.task import react
 from twisted.python.log import startLogging, err, msg
 from twisted.python.usage import Options, UsageError
-from twisted.web.http import BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND
+from twisted.web.http import (
+    BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND, INTERNAL_SERVER_ERROR
+)
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
@@ -110,6 +112,13 @@ class BenchmarkAPI_V1(object):
     def _not_found(self, request, failure):
         request.setResponseCode(NOT_FOUND)
         return ""
+
+    @app.handle_errors(Exception)
+    def _unhandled_error(self, request, failure):
+        err(failure, "Unhandled error")
+        request.setResponseCode(INTERNAL_SERVER_ERROR)
+        request.setHeader(b'content-type', b'application/json')
+        return dumps({"message": failure.value.message})
 
     @app.route("/benchmark-results", methods=['POST'])
     def post(self, request):
