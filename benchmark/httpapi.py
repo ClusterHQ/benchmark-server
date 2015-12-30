@@ -198,7 +198,6 @@ class BenchmarkAPI_V1(object):
         d = self.backend.query(filter, limit)
 
         def got_results(results):
-            msg("got {} results (limit = {})".format(len(results), limit))
             result = {"version": self.version, "results": results}
             return dumps(result)
 
