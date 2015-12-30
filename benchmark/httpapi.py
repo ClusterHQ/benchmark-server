@@ -128,7 +128,8 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         try:
             json = loads(request.content.read())
-        except ValueError as e:
+            json['userdata']['branch']
+        except (ValueError, KeyError) as e:
             raise BadRequest(e.message)
 
         d = self.backend.store(json)

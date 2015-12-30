@@ -58,7 +58,7 @@ class BenchmarkAPITests(TestCase):
     # because we test HTTP requests via an actual TCP/IP connection.
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
-    RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
+    RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1}
 
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
