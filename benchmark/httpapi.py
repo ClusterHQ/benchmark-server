@@ -36,9 +36,7 @@ class ResultNotFound(Exception):
 @implementer(IBackend)
 class InMemoryBackend(object):
     """
-    The backend that simply drops all results.
-
-    :ivar dict results: Stored results by their identifiers.
+    The backend that keeps the results in the memory.
     """
     def __init__(self):
         self._results = OrderedDict()
