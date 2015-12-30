@@ -23,7 +23,13 @@ from twisted.web.http import (
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
+from bson.errors import InvalidId
+from bson.objectid import ObjectId
+
 from klein import Klein
+
+from txmongo import MongoConnectionPool
+from txmongo.filter import DESCENDING, sort as orderby
 
 from zope.interface import implementer
 
@@ -91,6 +97,93 @@ class InMemoryBackend(object):
             return succeed(None)
         except KeyError:
             return fail(ResultNotFound())
+
+
+@implementer(IBackend)
+class TxMongoBackend(object):
+    """
+    The backend that uses txmongo driver to work with MongoDB.
+    """
+    # TODO: provide connection parameters (address, credentials)
+    def __init__(self):
+        connection = MongoConnectionPool()
+        self.collection = connection.benchmark.results
+
+    def disconnect(self):
+        return self.collection.database.connection.disconnect()
+
+    def store(self, result):
+        """
+        Store a single benchmarking result and return its identifier.
+
+        :param dict result: The result in the JSON compatible format.
+        :return: A Deferred that produces an identifier for the stored
+            result.
+        """
+        def to_str(result):
+            return str(result.inserted_id)
+        id = self.collection.insert_one(result)
+        id.addCallback(to_str)
+        return id
+
+    def retrieve(self, id):
+        """
+        Retrive a result by the given identifier.
+        """
+        try:
+            object_id = ObjectId(id)
+        except InvalidId:
+            raise ResultNotFound()
+
+        def post_process(result):
+            if result is None:
+                raise ResultNotFound()
+            # Removing _id because it is not a part of the original result.
+            # If we chose to keep _id, then note that its value
+            # is an ObjectId object that can not be serialized to JSON.
+            # Either a custom JSONEncoder or bson.json_util.dumps would
+            # be needed.
+            del result['_id']
+            return result
+
+        d = self.collection.find_one({'_id': object_id})
+        d.addCallback(post_process)
+        return d
+
+    def query(self, filter, limit):
+        """
+        Return matching results.
+        """
+        # _id is removed from results because it is not a part of the
+        # original result.  See the comment in retrieve() for details.
+        #
+        # XXX Note how txmongo API differs from that of pymongo,
+        # particularly collection.find() does not support sort argument.
+        # XXX Sorting by _id can be unreliable unless we generate IDs
+        # ourselves.  Also, it's better to sort by a timestamp embedded
+        # into result documents.
+        sort_filter = orderby(DESCENDING('_id'))
+        d = self.collection.find(filter, limit=limit, filter=sort_filter,
+                                 fields={'_id': False})
+        return d
+
+    def delete(self, id):
+        """
+        Delete a result by the given identifier.
+        """
+        try:
+            object_id = ObjectId(id)
+        except InvalidId:
+            raise ResultNotFound()
+
+        def handle_result(result):
+            if result.deleted_count == 0:
+                raise ResultNotFound()
+            return None
+
+        d = self.collection.delete_one({'_id': object_id})
+        d.addCallback(handle_result)
+        return d
 
 
 class BenchmarkAPI_V1(object):
