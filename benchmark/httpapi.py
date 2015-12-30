@@ -33,6 +33,12 @@ class ResultNotFound(Exception):
     """
 
 
+class BadRequest(Exception):
+    """
+    Bad request parameters or content.
+    """
+
+
 @implementer(IBackend)
 class InMemoryBackend(object):
     """
@@ -105,6 +111,13 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NOT_FOUND)
         return ""
 
+    @app.handle_errors(BadRequest)
+    def _bad_request(self, request, failure):
+        err(failure, "Bad request")
+        request.setResponseCode(BAD_REQUEST)
+        request.setHeader(b'content-type', b'application/json')
+        return dumps({"message": failure.value.message})
+
     @app.route("/benchmark-results", methods=['POST'])
     def post(self, request):
         """
@@ -116,9 +129,7 @@ class BenchmarkAPI_V1(object):
         try:
             json = loads(request.content.read())
         except ValueError as e:
-            err(e, "failed to parse result")
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
+            raise BadRequest(e.message)
 
         d = self.backend.store(json)
 
