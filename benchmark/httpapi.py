@@ -175,36 +175,22 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NO_CONTENT)
         return self.backend.delete(id)
 
-    @app.route("/query", methods=['POST'])
+    @app.route("/benchmark-results", methods=['GET'])
     def query(self, request):
         """
         Query the previously stored benchmarking results.
 
-        Returns results that are supersets of a JSON document
-        provided in the request body.
-        Number of the returned results can be limited using
-        "limit" query argumnet.
+        Currently this method supports filtering only by the branch name.
+        There is no support for the results paging, but a limit on the number
+        of the results is supported.
+        The order of the results is fixed at the moment and it's by
+        by the result timestamp in the descending order.
 
         :param twisted.web.http.Request request: The request.
         """
         request.setHeader(b'content-type', b'application/json')
-        try:
-            json = loads(request.content.read())
-        except ValueError as e:
-            err(e, "failed to parse filter")
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
-
-        filter = json.get('filter', {})
-        limit = json.get('limit', '0')
-        try:
-            limit = int(limit)
-        except ValueError as e:
-            err(e, "limit is not an integer: {}".format(limit))
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
-
-        d = self.backend.query(filter, limit)
+        params = self._parse_query_args(request.args)
+        d = self.backend.query(**params)
 
         def got_results(results):
             result = {"version": self.version, "results": results}
@@ -212,6 +198,31 @@ class BenchmarkAPI_V1(object):
 
         d.addCallback(got_results)
         return d
+
+    @staticmethod
+    def _parse_query_args(args):
+        def ensure_one_value(key, values):
+            if len(values) != 1:
+                raise BadRequest("'{}' should have one value".format(key))
+            return values[0]
+
+        limit = 0
+        filter = {}
+        for k, v in args.iteritems():
+            if k == 'limit':
+                limit = ensure_one_value(k, v)
+                try:
+                    limit = int(limit)
+                except ValueError:
+                    raise BadRequest(
+                        "limit is not an integer: '{}'".format(limit)
+                    )
+            elif k == 'branch':
+                branch = ensure_one_value(k, v)
+                filter['userdata'] = {'branch': branch}
+            else:
+                raise BadRequest("unexpected query argument '{}'".format(k))
+        return {'filter': filter, 'limit': limit}
 
 
 def create_api_service(endpoint):
