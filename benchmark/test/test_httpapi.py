@@ -1,4 +1,5 @@
 from json import dumps, loads
+from urllib import urlencode
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
@@ -333,7 +334,7 @@ class BenchmarkAPITests(TestCase):
         self.assertEqual(data['version'], 1)
         self.assertIn('results', data)
         results = data['results']
-        self.assertItemsEqual(results, expected)
+        self.assertItemsEqual(expected, results)
 
     def test_query_no_filter_no_limit(self):
         """
