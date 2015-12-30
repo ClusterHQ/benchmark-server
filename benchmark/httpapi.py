@@ -11,6 +11,7 @@ from uuid import uuid4
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
+from twisted.application.service import MultiService, Service
 from twisted.internet.defer import Deferred, fail, succeed
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.task import react
@@ -42,6 +43,9 @@ class InMemoryBackend(object):
     """
     def __init__(self):
         self._results = OrderedDict()
+
+    def disconnect(self):
+        return succeed(None)
 
     def store(self, result):
         """
@@ -206,7 +210,7 @@ class BenchmarkAPI_V1(object):
         return d
 
 
-def create_api_service(endpoint):
+def create_api_service(endpoint, backend):
     """
     Create a Twisted Service that serves the API on the given endpoint.
 
@@ -214,10 +218,40 @@ def create_api_service(endpoint):
     :return: Service that will listen on the endpoint using HTTP API server.
     """
     api_root = Resource()
-    api = BenchmarkAPI_V1(InMemoryBackend())
+    api = BenchmarkAPI_V1(backend)
     api_root.putChild('v1', api.app.resource())
 
     return StreamServerEndpointService(endpoint, Site(api_root))
+
+
+class BackendService(Service):
+    """
+    A basic Twisted service that wraps the peristence backend.
+    """
+    def __init__(self, backend):
+        super(Service, self).__init__()
+        self.backend = backend
+
+    def stopService(self):
+        return self.backend.disconnect()
+
+
+def start_services(reactor, endpoint, backend):
+    top_service = MultiService()
+    api_service = create_api_service(endpoint, backend)
+    api_service.setServiceParent(top_service)
+    backend_service = BackendService(backend)
+    backend_service.setServiceParent(top_service)
+
+    # XXX Make startService() raise an exception on an error
+    # instead of just logging and dropping it.
+    api_service._raiseSynchronously = True
+    top_service.startService()
+    reactor.addSystemEventTrigger(
+        "before",
+        "shutdown",
+        lambda: top_service.stopService,
+    )
 
 
 class ServerOptions(Options):
@@ -241,17 +275,11 @@ def main(reactor, args):
         raise SystemExit(1)
 
     startLogging(sys.stderr)
-    service = create_api_service(TCP4ServerEndpoint(reactor, options['port']))
 
-    # XXX Make startService() raise an exception on an error
-    # instead of just logging and dropping it.
-    service._raiseSynchronously = True
-    service.startService()
-    reactor.addSystemEventTrigger(
-        "before",
-        "shutdown",
-        lambda: service.stopService,
-    )
+    endpoint = TCP4ServerEndpoint(reactor, options['port'])
+    backend = InMemoryBackend()
+    start_services(reactor, endpoint, backend)
+
     # Do not quit until the reactor is stopped.
     return Deferred()
 

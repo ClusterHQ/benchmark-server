@@ -63,6 +63,7 @@ class BenchmarkAPITests(TestCase):
         super(BenchmarkAPITests, self).setUp()
 
         self.backend = InMemoryBackend()
+        self.addCleanup(self.backend.disconnect)
         api = BenchmarkAPI_V1(self.backend)
         site = server.Site(api.app.resource())
 
