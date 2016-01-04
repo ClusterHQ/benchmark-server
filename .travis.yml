@@ -6,4 +6,4 @@ install:
   - pip install -e .[dev]
 
 script:
-  - trial benchmark
+  - trial benchmark.test
