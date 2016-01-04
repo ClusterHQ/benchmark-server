@@ -13,7 +13,7 @@ from testtools.deferredruntest import AsynchronousDeferredRunTest
 
 from zope.interface import implementer
 
-from benchmark.httpapi import BenchmarkAPI_V1, InMemoryBackend
+from ..httpapi import BenchmarkAPI_V1, InMemoryBackend
 
 
 @implementer(IBodyProducer)
