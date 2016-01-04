@@ -277,11 +277,11 @@ class BenchmarkAPITests(TestCase):
         return req
 
     BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100,
-                       u"timestamp": datetime.now().isoformat()}
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat()}
     BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120,
-                       u"timestamp": datetime.now().isoformat()}
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 6).isoformat()}
     BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
-                       u"timestamp": datetime.now().isoformat()}
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 7).isoformat()}
 
     def setup_results(self):
         """
