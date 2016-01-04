@@ -49,7 +49,7 @@ class TestEndpoint(TCP4ServerEndpoint):
         return d
 
 
-class BenchmarkAPITests(TestCase):
+class BenchmarkAPITestsMixin(object):
     """
     Tests for BenchmarkAPI.
     """
@@ -60,10 +60,8 @@ class BenchmarkAPITests(TestCase):
     RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
 
     def setUp(self):
-        super(BenchmarkAPITests, self).setUp()
+        super(BenchmarkAPITestsMixin, self).setUp()
 
-        self.backend = InMemoryBackend()
-        self.addCleanup(self.backend.disconnect)
         api = BenchmarkAPI_V1(self.backend)
         site = server.Site(api.app.resource())
 
@@ -402,3 +400,9 @@ class BenchmarkAPITests(TestCase):
             ],
         )
         return d
+
+
+class InMemoryBenchmarkAPITests(BenchmarkAPITestsMixin, TestCase):
+    def setUp(self):
+        self.backend = InMemoryBackend()
+        super(InMemoryBenchmarkAPITests, self).setUp()
