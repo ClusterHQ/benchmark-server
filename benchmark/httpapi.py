@@ -26,7 +26,11 @@ from twisted.web.server import Site
 from bson.errors import InvalidId
 from bson.objectid import ObjectId
 
+from dateutil import parser as timestamp_parser
+
 from klein import Klein
+
+from sortedcontainers import SortedList
 
 from txmongo import MongoConnectionPool
 from txmongo.filter import DESCENDING, sort as orderby
@@ -42,15 +46,23 @@ class ResultNotFound(Exception):
     """
 
 
+class BadRequest(Exception):
+    """
+    Bad request parameters or content.
+    """
+
+
 @implementer(IBackend)
 class InMemoryBackend(object):
     """
-    The backend that simply drops all results.
-
-    :ivar dict results: Stored results by their identifiers.
+    The backend that keeps the results in the memory.
     """
     def __init__(self):
+        def get_timestamp(result):
+            return timestamp_parser.parse(result['timestamp'])
+
         self._results = OrderedDict()
+        self._sorted = SortedList(key=get_timestamp)
 
     def disconnect(self):
         return succeed(None)
@@ -65,6 +77,7 @@ class InMemoryBackend(object):
         """
         id = uuid4().hex
         self._results[id] = result
+        self._sorted.add(result)
         return succeed(id)
 
     def retrieve(self, id):
@@ -80,12 +93,12 @@ class InMemoryBackend(object):
         """
         Return matching results.
         """
-        matching = [
-            r for r in reversed(self._results.values())
-            if filter.viewitems() <= r.viewitems()
-        ]
-        if limit > 0:
-            matching = matching[:limit]
+        matching = []
+        for result in reversed(self._sorted):
+            if filter.viewitems() <= result.viewitems():
+                matching.append(result)
+            if limit > 0 and len(matching) == limit:
+                break
         return succeed(matching)
 
     def delete(self, id):
@@ -93,7 +106,8 @@ class InMemoryBackend(object):
         Delete a result by the given identifier.
         """
         try:
-            del self._results[id]
+            result = self._results.pop(id)
+            self._sorted.remove(result)
             return succeed(None)
         except KeyError:
             return fail(ResultNotFound())
@@ -206,6 +220,13 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NOT_FOUND)
         return ""
 
+    @app.handle_errors(BadRequest)
+    def _bad_request(self, request, failure):
+        err(failure, "Bad request")
+        request.setResponseCode(BAD_REQUEST)
+        request.setHeader(b'content-type', b'application/json')
+        return dumps({"message": failure.value.message})
+
     @app.handle_errors(Exception)
     def _unhandled_error(self, request, failure):
         err(failure, "Unhandled error")
@@ -223,10 +244,12 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         try:
             json = loads(request.content.read())
+            json['userdata']['branch']
+            timestamp_parser.parse(json['timestamp'])
+        except KeyError as e:
+            raise BadRequest("'{}' is missing".format(e.message))
         except ValueError as e:
-            err(e, "failed to parse result")
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
+            raise BadRequest(e.message)
 
         d = self.backend.store(json)
 
@@ -272,44 +295,54 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NO_CONTENT)
         return self.backend.delete(id)
 
-    @app.route("/query", methods=['POST'])
+    @app.route("/benchmark-results", methods=['GET'])
     def query(self, request):
         """
         Query the previously stored benchmarking results.
 
-        Returns results that are supersets of a JSON document
-        provided in the request body.
-        Number of the returned results can be limited using
-        "limit" query argumnet.
+        Currently this method supports filtering only by the branch name.
+        There is no support for the results paging, but a limit on the number
+        of the results is supported.
+        The order of the results is fixed at the moment and it's by
+        by the result timestamp in the descending order.
 
         :param twisted.web.http.Request request: The request.
         """
         request.setHeader(b'content-type', b'application/json')
-        try:
-            json = loads(request.content.read())
-        except ValueError as e:
-            err(e, "failed to parse filter")
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
-
-        filter = json.get('filter', {})
-        limit = json.get('limit', '0')
-        try:
-            limit = int(limit)
-        except ValueError as e:
-            err(e, "limit is not an integer: {}".format(limit))
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
-
-        d = self.backend.query(filter, limit)
+        params = self._parse_query_args(request.args)
+        d = self.backend.query(**params)
 
         def got_results(results):
-            msg("got {} results (limit = {})".format(len(results), limit))
             result = {"version": self.version, "results": results}
             return dumps(result)
 
         d.addCallback(got_results)
         return d
+
+    @staticmethod
+    def _parse_query_args(args):
+        def ensure_one_value(key, values):
+            if len(values) != 1:
+                raise BadRequest("'{}' should have one value".format(key))
+            return values[0]
+
+        limit = 0
+        filter = {}
+        for k, v in args.iteritems():
+            if k == 'limit':
+                limit = ensure_one_value(k, v)
+                try:
+                    limit = int(limit)
+                except ValueError:
+                    raise BadRequest(
+                        "limit is not an integer: '{}'".format(limit)
+                    )
+            elif k == 'branch':
+                branch = ensure_one_value(k, v)
+                filter['userdata'] = {'branch': branch}
+            else:
+                raise BadRequest("unexpected query argument '{}'".format(k))
+        return {'filter': filter, 'limit': limit}
 
 
 def create_api_service(endpoint, backend):

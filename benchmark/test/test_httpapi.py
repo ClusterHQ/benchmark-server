@@ -1,4 +1,6 @@
+from datetime import datetime
 from json import dumps, loads
+from urllib import urlencode
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
@@ -57,7 +59,8 @@ class BenchmarkAPITestsMixin(object):
     # because we test HTTP requests via an actual TCP/IP connection.
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
-    RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
+    RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1,
+              u"timestamp": datetime.now().isoformat(), }
 
     def setUp(self):
         super(BenchmarkAPITestsMixin, self).setUp()
@@ -272,9 +275,12 @@ class BenchmarkAPITestsMixin(object):
         req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
 
-    BRANCH1_RESULT1 = {u"branch": u"1", u"value": 100}
-    BRANCH1_RESULT2 = {u"branch": u"1", u"value": 120}
-    BRANCH2_RESULT1 = {u"branch": u"2", u"value": 110}
+    BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100,
+                       u"timestamp": datetime.now().isoformat()}
+    BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120,
+                       u"timestamp": datetime.now().isoformat()}
+    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime.now().isoformat()}
 
     def setup_results(self):
         """
@@ -306,11 +312,14 @@ class BenchmarkAPITestsMixin(object):
         """
         query = {}
         if filter:
-            query["filter"] = filter
+            query = filter.copy()
         if limit:
             query["limit"] = limit
-        json = StringProducer(dumps(query))
-        req = self.agent.request("POST", "/query", bodyProducer=json)
+        if query:
+            query_string = "?" + urlencode(query)
+        else:
+            query_string = ""
+        req = self.agent.request("GET", "/benchmark-results" + query_string)
         req.addCallback(self.check_response_code, 200)
         req.addCallback(client.readBody)
         return req
