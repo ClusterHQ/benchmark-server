@@ -129,7 +129,9 @@ class BenchmarkAPI_V1(object):
         try:
             json = loads(request.content.read())
             json['userdata']['branch']
-        except (ValueError, KeyError) as e:
+        except KeyError as e:
+            raise BadRequest("'{}' is missing".format(e.message))
+        except ValueError as e:
             raise BadRequest(e.message)
 
         d = self.backend.store(json)
