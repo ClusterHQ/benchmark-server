@@ -136,6 +136,10 @@ class TxMongoBackend(object):
         """
         def to_str(result):
             return str(result.inserted_id)
+
+        # Store the timestamp field as a special hidden datetime field
+        # for sorting.
+        result['sort$timestamp'] = timestamp_parser.parse(result['timestamp'])
         id = self.collection.insert_one(result)
         id.addCallback(to_str)
         return id
@@ -158,6 +162,7 @@ class TxMongoBackend(object):
             # Either a custom JSONEncoder or bson.json_util.dumps would
             # be needed.
             del result['_id']
+            del result['sort$timestamp']
             return result
 
         d = self.collection.find_one({'_id': object_id})
@@ -176,9 +181,13 @@ class TxMongoBackend(object):
         # XXX Sorting by _id can be unreliable unless we generate IDs
         # ourselves.  Also, it's better to sort by a timestamp embedded
         # into result documents.
-        sort_filter = orderby(DESCENDING('_id'))
-        d = self.collection.find(filter, limit=limit, filter=sort_filter,
-                                 fields={'_id': False})
+        sort_filter = orderby(DESCENDING('sort$timestamp'))
+        d = self.collection.find(
+            filter,
+            limit=limit,
+            filter=sort_filter,
+            fields={'_id': False, 'sort$timestamp': False}
+        )
         return d
 
     def delete(self, id):
