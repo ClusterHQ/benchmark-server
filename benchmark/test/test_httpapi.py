@@ -1,3 +1,4 @@
+from datetime import datetime
 from json import dumps, loads
 from urllib import urlencode
 from urlparse import urljoin
@@ -58,7 +59,8 @@ class BenchmarkAPITests(TestCase):
     # because we test HTTP requests via an actual TCP/IP connection.
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
-    RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1}
+    RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1,
+              u"timestamp": datetime.now().isoformat(), }
 
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
@@ -274,9 +276,12 @@ class BenchmarkAPITests(TestCase):
         req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
 
-    BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100}
-    BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120}
-    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110}
+    BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100,
+                       u"timestamp": datetime.now().isoformat()}
+    BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120,
+                       u"timestamp": datetime.now().isoformat()}
+    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime.now().isoformat()}
 
     def setup_results(self):
         """

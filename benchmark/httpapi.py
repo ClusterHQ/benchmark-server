@@ -20,7 +20,11 @@ from twisted.web.http import BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
+from dateutil import parser as timestamp_parser
+
 from klein import Klein
+
+from sortedcontainers import SortedList
 
 from zope.interface import implementer
 
@@ -45,7 +49,11 @@ class InMemoryBackend(object):
     The backend that keeps the results in the memory.
     """
     def __init__(self):
+        def get_timestamp(result):
+            return timestamp_parser.parse(result['timestamp'])
+
         self._results = OrderedDict()
+        self._sorted = SortedList(key=get_timestamp)
 
     def store(self, result):
         """
@@ -57,6 +65,7 @@ class InMemoryBackend(object):
         """
         id = uuid4().hex
         self._results[id] = result
+        self._sorted.add(result)
         return succeed(id)
 
     def retrieve(self, id):
@@ -72,12 +81,12 @@ class InMemoryBackend(object):
         """
         Return matching results.
         """
-        matching = [
-            r for r in reversed(self._results.values())
-            if filter.viewitems() <= r.viewitems()
-        ]
-        if limit > 0:
-            matching = matching[:limit]
+        matching = []
+        for result in reversed(self._sorted):
+            if filter.viewitems() <= result.viewitems():
+                matching.append(result)
+            if limit > 0 and len(matching) == limit:
+                break
         return succeed(matching)
 
     def delete(self, id):
@@ -85,7 +94,8 @@ class InMemoryBackend(object):
         Delete a result by the given identifier.
         """
         try:
-            del self._results[id]
+            result = self._results.pop(id)
+            self._sorted.remove(result)
             return succeed(None)
         except KeyError:
             return fail(ResultNotFound())
@@ -129,6 +139,7 @@ class BenchmarkAPI_V1(object):
         try:
             json = loads(request.content.read())
             json['userdata']['branch']
+            timestamp_parser.parse(json['timestamp'])
         except KeyError as e:
             raise BadRequest("'{}' is missing".format(e.message))
         except ValueError as e:
