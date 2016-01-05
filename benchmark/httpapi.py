@@ -192,11 +192,12 @@ class BenchmarkAPI_V1(object):
         """
         Query the previously stored benchmarking results.
 
-        Currently this method supports filtering only by the branch name.
-        There is no support for the results paging, but a limit on the number
-        of the results is supported.
-        The order of the results is fixed at the moment and it's by
-        by the result timestamp in the descending order.
+        Currently this method only supports filtering the results by the
+        branch name.
+        There is no support for paging of results, but a limit on the
+        number of the results to return may be specified.
+        The returned results are ordered by the timestamp in descending
+        order.
 
         :param twisted.web.http.Request request: The request.
         """

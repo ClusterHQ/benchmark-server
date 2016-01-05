@@ -310,8 +310,8 @@ class BenchmarkAPITests(TestCase):
         Invoke the query interface of the HTTP API.
 
         :param dict filter: The data that the results must include.
-        :param int limit: The limit on how many results to turn.
-        :return" Deferred that fires with content of a response.
+        :param int limit: The limit on how many results to return.
+        :return: Deferred that fires with content of a response.
         """
         query = {}
         if filter:
@@ -329,8 +329,8 @@ class BenchmarkAPITests(TestCase):
 
     def check_query_result(self, body, expected):
         """
-        Check that the given response content is valid JSON
-        that contains the expect result.
+        Check that the given response content is valid JSON that
+        contains the expected resut.
 
         :param str body: The content to check.
         :param expected: The expected results.
@@ -360,7 +360,7 @@ class BenchmarkAPITests(TestCase):
 
     def test_query_with_filter(self):
         """
-        All matching results are returned if filter is given.
+        All matching results are returned if a filter is given.
         """
         d = self.setup_results()
         d.addCallback(self.run_query, filter={u"branch": u"1"})
@@ -382,8 +382,8 @@ class BenchmarkAPITests(TestCase):
     def test_query_with_limit(self):
         """
         The latest ``limit`` results are returned if no filter is set
-        but the limit is specified and the total number of the results
-        is greater than the limit.
+        and the specified limit is less than the total number of
+        results.
         """
         d = self.setup_results()
         d.addCallback(self.run_query, limit=2)
@@ -398,10 +398,9 @@ class BenchmarkAPITests(TestCase):
 
     def test_query_with_filter_and_limit(self):
         """
-        The expected number of matching results is returned
-        if the total number of such results is greater than
-        the limit.  The returned results are the latest among
-        the matching results.
+        The latest ``limit`` results which match the specified filter
+        are returned if the limit is less than the total number of
+        results.
         """
         d = self.setup_results()
         d.addCallback(self.run_query, filter={u"branch": u"1"}, limit=1)
