@@ -1,6 +1,5 @@
 from datetime import datetime
 from json import dumps, loads
-from random import shuffle
 from urllib import urlencode
 from urlparse import urljoin
 
@@ -280,18 +279,22 @@ class BenchmarkAPITests(TestCase):
     BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100,
                        u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat()}
     BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120,
-                       u"timestamp": datetime(2016, 1, 1, 0, 0, 6).isoformat()}
-    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
                        u"timestamp": datetime(2016, 1, 1, 0, 0, 7).isoformat()}
+    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 6).isoformat()}
+    BRANCH2_RESULT2 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 8).isoformat()}
 
     def setup_results(self):
         """
         Submit some results for testing various queries against them.
         """
+
+        # Shuffle the results before submitting them.
         results = [
-            self.BRANCH1_RESULT1, self.BRANCH1_RESULT2, self.BRANCH2_RESULT1
+            self.BRANCH2_RESULT1, self.BRANCH1_RESULT1, self.BRANCH2_RESULT2,
+            self.BRANCH1_RESULT2
         ]
-        shuffle(results)
 
         def chained_submit(_, result):
             """
@@ -341,7 +344,7 @@ class BenchmarkAPITests(TestCase):
         self.assertEqual(data['version'], 1)
         self.assertIn('results', data)
         results = data['results']
-        self.assertItemsEqual(expected, results)
+        self.assertEqual(expected, results)
 
     def test_query_no_filter_no_limit(self):
         """
@@ -352,8 +355,8 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(
             self.check_query_result,
             expected=[
-                self.BRANCH1_RESULT1, self.BRANCH1_RESULT2,
-                self.BRANCH2_RESULT1
+                self.BRANCH2_RESULT2, self.BRANCH1_RESULT2,
+                self.BRANCH2_RESULT1, self.BRANCH1_RESULT1
             ],
         )
         return d
@@ -367,14 +370,14 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(
             self.check_query_result,
             expected=[
-                self.BRANCH1_RESULT1, self.BRANCH1_RESULT2,
+                self.BRANCH1_RESULT2, self.BRANCH1_RESULT1,
             ],
         )
         d.addCallback(self.run_query, filter={u"branch": u"2"})
         d.addCallback(
             self.check_query_result,
             expected=[
-                self.BRANCH2_RESULT1
+                self.BRANCH2_RESULT2, self.BRANCH2_RESULT1
             ],
         )
         return d
@@ -390,8 +393,8 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(
             self.check_query_result,
             expected=[
-                self.BRANCH1_RESULT2,
-                self.BRANCH2_RESULT1
+                self.BRANCH2_RESULT2,
+                self.BRANCH1_RESULT2
             ],
         )
         return d
