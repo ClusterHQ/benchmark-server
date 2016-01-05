@@ -1,3 +1,1 @@
 testtools==1.8.1
-python-dateutil==2.4.2
-sortedcontainers==1.4.4
