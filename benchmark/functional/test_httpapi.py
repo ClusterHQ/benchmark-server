@@ -10,6 +10,16 @@ class TxMongoBenchmarkAPITests(BenchmarkAPITestsMixin, TestCase):
         self.addCleanup(self.backend.disconnect)
         super(TxMongoBenchmarkAPITests, self).setUp()
 
-    def tearDown(self):
-        super(TxMongoBenchmarkAPITests, self).tearDown()
-        return self.backend.collection.delete_many({})
+    def submit(self, result):
+        """
+        Submit a result.
+        """
+        req = super(TxMongoBenchmarkAPITests, self).submit(result)
+
+        def add_cleanup(response):
+            location = response.headers.getRawHeaders(b'Location')[0]
+            self.addCleanup(lambda: self.agent.request("DELETE", location))
+            return response
+
+        req.addCallback(add_cleanup)
+        return req
