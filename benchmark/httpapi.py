@@ -5,7 +5,6 @@ A HTTP REST API for storing benchmark results.
 
 import sys
 
-from collections import OrderedDict
 from json import dumps, loads
 from uuid import uuid4
 from urlparse import urljoin
@@ -61,7 +60,7 @@ class InMemoryBackend(object):
         def get_timestamp(result):
             return timestamp_parser.parse(result['timestamp'])
 
-        self._results = OrderedDict()
+        self._results = dict()
         self._sorted = SortedList(key=get_timestamp)
 
     def disconnect(self):
