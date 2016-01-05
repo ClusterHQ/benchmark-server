@@ -137,7 +137,6 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         try:
             json = loads(request.content.read())
-            json['userdata']['branch']
             timestamp_parser.parse(json['timestamp'])
         except KeyError as e:
             raise BadRequest("'{}' is missing".format(e.message))
