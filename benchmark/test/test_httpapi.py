@@ -61,7 +61,7 @@ class BenchmarkAPITests(TestCase):
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
     RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1,
-              u"timestamp": datetime.now().isoformat(), }
+              u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat(), }
 
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
