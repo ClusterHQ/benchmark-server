@@ -1,5 +1,6 @@
 from datetime import datetime
 from json import dumps, loads
+from random import shuffle
 from urllib import urlencode
 from urlparse import urljoin
 
@@ -290,6 +291,7 @@ class BenchmarkAPITests(TestCase):
         results = [
             self.BRANCH1_RESULT1, self.BRANCH1_RESULT2, self.BRANCH2_RESULT1
         ]
+        shuffle(results)
 
         def chained_submit(_, result):
             """
