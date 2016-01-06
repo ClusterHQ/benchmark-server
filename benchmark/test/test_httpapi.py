@@ -11,11 +11,13 @@ from twisted.web import client, http, server
 from twisted.web.iweb import IBodyProducer
 
 from testtools import TestCase
-from testtools.deferredruntest import AsynchronousDeferredRunTest
+from testtools.deferredruntest import (
+    AsynchronousDeferredRunTest, flush_logged_errors
+)
 
 from zope.interface import implementer
 
-from benchmark.httpapi import BenchmarkAPI_V1, InMemoryBackend
+from benchmark.httpapi import BenchmarkAPI_V1, InMemoryBackend, BadRequest
 
 
 @implementer(IBodyProducer)
@@ -314,7 +316,7 @@ class BenchmarkAPITests(TestCase):
 
         :param dict filter: The data that the results must include.
         :param int limit: The limit on how many results to return.
-        :return: Deferred that fires with content of a response.
+        :return: Deferred that fires with a HTTP response.
         """
         query = {}
         if filter:
@@ -322,29 +324,36 @@ class BenchmarkAPITests(TestCase):
         if limit:
             query["limit"] = limit
         if query:
-            query_string = "?" + urlencode(query)
+            query_string = "?" + urlencode(query, doseq=True)
         else:
             query_string = ""
-        req = self.agent.request("GET", "/benchmark-results" + query_string)
-        req.addCallback(self.check_response_code, 200)
-        req.addCallback(client.readBody)
-        return req
+        return self.agent.request("GET", "/benchmark-results" + query_string)
 
-    def check_query_result(self, body, expected):
+    def check_query_result(self, response, expected_results, expected_code=200):
         """
-        Check that the given response content is valid JSON that
-        contains the expected resut.
+        Check that the given response matches the expected response code
+        and that the content is valid JSON that contains the expected
+        result.
 
-        :param str body: The content to check.
-        :param expected: The expected results.
+        :param response: The response to check.
+        :param expected_result:
         :type expected: list of dict
+        :param expected_code: The expected response code.
         """
-        data = loads(body)
-        self.assertIn('version', data)
-        self.assertEqual(data['version'], 1)
-        self.assertIn('results', data)
-        results = data['results']
-        self.assertEqual(expected, results)
+        self.check_response_code(response, expected_code)
+
+        d = client.readBody(response)
+
+        def check_body(body):
+            data = loads(body)
+            self.assertIn('version', data)
+            self.assertEqual(data['version'], 1)
+            self.assertIn('results', data)
+            results = data['results']
+            self.assertEqual(expected_results, results)
+
+        d.addCallback(check_body)
+        return d
 
     def test_query_no_filter_no_limit(self):
         """
@@ -354,7 +363,7 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(self.run_query)
         d.addCallback(
             self.check_query_result,
-            expected=[
+            expected_results=[
                 self.BRANCH2_RESULT2, self.BRANCH1_RESULT2,
                 self.BRANCH2_RESULT1, self.BRANCH1_RESULT1
             ],
@@ -369,14 +378,14 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(self.run_query, filter={u"branch": u"1"})
         d.addCallback(
             self.check_query_result,
-            expected=[
+            expected_results=[
                 self.BRANCH1_RESULT2, self.BRANCH1_RESULT1,
             ],
         )
         d.addCallback(self.run_query, filter={u"branch": u"2"})
         d.addCallback(
             self.check_query_result,
-            expected=[
+            expected_results=[
                 self.BRANCH2_RESULT2, self.BRANCH2_RESULT1
             ],
         )
@@ -392,7 +401,7 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(self.run_query, limit=2)
         d.addCallback(
             self.check_query_result,
-            expected=[
+            expected_results=[
                 self.BRANCH2_RESULT2,
                 self.BRANCH1_RESULT2
             ],
@@ -409,8 +418,41 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(self.run_query, filter={u"branch": u"1"}, limit=1)
         d.addCallback(
             self.check_query_result,
-            expected=[
+            expected_results=[
                 self.BRANCH1_RESULT2,
             ],
         )
+        return d
+
+    def test_error_with_unsupported_query_arg(self):
+        """
+        ``query`` raises ``BadRequest`` when an unsupported query
+        argument is specified.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"unsupported": u"ignored"})
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_error_with_multiple_query_args_of_same_type(self):
+        """
+        ``query`` raises ``BadRequest`` when multiple values for a key
+        are specified.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": [u"1", u"2"]})
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_error_with_non_integer_limit_query_arg(self):
+        """
+        ``query`` raises ``BadRequest`` when a non-integer value is
+        is specified for the `limit` key.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit="one")
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
         return d
