@@ -64,6 +64,12 @@ class BenchmarkAPITests(TestCase):
     RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1,
               u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat(), }
 
+    NO_TIMESTAMP = {u"userdata": {u"branch": "master"}, u"run": 1,
+                    u"result": 1, }
+
+    BAD_TIMESTAMP = {u"userdata": {u"branch": "master"}, u"run": 1,
+                     u"result": 1, u"timestamp": "noonish", }
+
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
 
@@ -126,6 +132,22 @@ class BenchmarkAPITests(TestCase):
         """
         req = self.submit(self.RESULT)
         req.addCallback(self.check_response_code, http.CREATED)
+        return req
+
+    def test_no_timestamp(self):
+        """
+        Valid JSON with a missing timestamp is an HTTP BAD_REQUEST.
+        """
+        req = self.submit(self.NO_TIMESTAMP)
+        req.addCallback(self.check_response_code, http.BAD_REQUEST)
+        return req
+
+    def test_bad_timestamp(self):
+        """
+        Valid JSON with an invalid timestamp is an HTTP BAD_REQUEST.
+        """
+        req = self.submit(self.BAD_TIMESTAMP)
+        req.addCallback(self.check_response_code, http.BAD_REQUEST)
         return req
 
     def test_submit_response_format(self):
@@ -329,7 +351,8 @@ class BenchmarkAPITests(TestCase):
             query_string = ""
         return self.agent.request("GET", "/benchmark-results" + query_string)
 
-    def check_query_result(self, response, expected_results, expected_code=200):
+    def check_query_result(self, response, expected_results,
+                           expected_code=200):
         """
         Check that the given response matches the expected response code
         and that the content is valid JSON that contains the expected
