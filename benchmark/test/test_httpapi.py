@@ -140,6 +140,7 @@ class BenchmarkAPITests(TestCase):
         """
         req = self.submit(self.NO_TIMESTAMP)
         req.addCallback(self.check_response_code, http.BAD_REQUEST)
+        req.addCallback(lambda _: flush_logged_errors(BadRequest))
         return req
 
     def test_bad_timestamp(self):
@@ -148,6 +149,7 @@ class BenchmarkAPITests(TestCase):
         """
         req = self.submit(self.BAD_TIMESTAMP)
         req.addCallback(self.check_response_code, http.BAD_REQUEST)
+        req.addCallback(lambda _: flush_logged_errors(BadRequest))
         return req
 
     def test_submit_response_format(self):
