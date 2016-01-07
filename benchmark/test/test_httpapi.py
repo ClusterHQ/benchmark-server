@@ -361,8 +361,9 @@ class BenchmarkAPITests(TestCase):
         result.
 
         :param response: The response to check.
-        :param expected_result:
-        :type expected: list of dict
+        :param expected_results: The expected results that should be in
+            the response.
+        :type expected_results: list of dict
         :param expected_code: The expected response code.
         """
         self.check_response_code(response, expected_code)
