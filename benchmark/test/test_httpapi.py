@@ -424,7 +424,7 @@ class BenchmarkAPITests(TestCase):
         )
         return d
 
-    def test_error_with_unsupported_query_arg(self):
+    def test_unsupported_query_arg(self):
         """
         ``query`` raises ``BadRequest`` when an unsupported query
         argument is specified.
@@ -435,7 +435,7 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(lambda _: flush_logged_errors(BadRequest))
         return d
 
-    def test_error_with_multiple_query_args_of_same_type(self):
+    def test_multiple_query_args_of_same_type(self):
         """
         ``query`` raises ``BadRequest`` when multiple values for a key
         are specified.
@@ -446,7 +446,7 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(lambda _: flush_logged_errors(BadRequest))
         return d
 
-    def test_error_with_non_integer_limit_query_arg(self):
+    def test_non_integer_limit_query_arg(self):
         """
         ``query`` raises ``BadRequest`` when a non-integer value is
         is specified for the `limit` key.
