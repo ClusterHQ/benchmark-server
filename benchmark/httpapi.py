@@ -76,16 +76,16 @@ class InMemoryBackend(object):
         except KeyError:
             return fail(ResultNotFound())
 
-    def query(self, filter, limit):
+    def query(self, filter, limit=None):
         """
         Return matching results.
         """
         matching = []
         for result in reversed(self._sorted):
+            if len(matching) == limit:
+                break
             if filter.viewitems() <= result.viewitems():
                 matching.append(result)
-            if limit > 0 and len(matching) == limit:
-                break
         return succeed(matching)
 
     def delete(self, id):
@@ -219,13 +219,18 @@ class BenchmarkAPI_V1(object):
                 raise BadRequest("'{}' should have one value".format(key))
             return values[0]
 
-        limit = 0
+        limit = None
         filter = {}
         for k, v in args.iteritems():
             if k == 'limit':
                 limit = ensure_one_value(k, v)
                 try:
                     limit = int(limit)
+                    if limit < 0:
+                        raise BadRequest(
+                            "limit is not a non-negative integer: {}".
+                            format(limit)
+                        )
                 except ValueError:
                     raise BadRequest(
                         "limit is not an integer: '{}'".format(limit)

@@ -321,7 +321,7 @@ class BenchmarkAPITests(TestCase):
         query = {}
         if filter:
             query = filter.copy()
-        if limit:
+        if limit is not None:
             query["limit"] = limit
         if query:
             query_string = "?" + urlencode(query, doseq=True)
@@ -391,6 +391,18 @@ class BenchmarkAPITests(TestCase):
         )
         return d
 
+    def test_query_with_zero_limit(self):
+        """
+        An empty set of results are returned for a limit of zero.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=0)
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[],
+        )
+        return d
+
     def test_query_with_limit(self):
         """
         The latest ``limit`` results are returned if no filter is set
@@ -453,6 +465,17 @@ class BenchmarkAPITests(TestCase):
         """
         d = self.setup_results()
         d.addCallback(self.run_query, limit="one")
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_query_with_negative_limit(self):
+        """
+        ``query`` raises ``BadRequest`` when a negative value is
+        specified for the `limit` key.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=-1)
         d.addCallback(self.check_response_code, http.BAD_REQUEST)
         d.addCallback(lambda _: flush_logged_errors(BadRequest))
         return d
