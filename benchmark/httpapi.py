@@ -19,7 +19,11 @@ from twisted.web.http import BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
+from dateutil import parser as timestamp_parser
+
 from klein import Klein
+
+from sortedcontainers import SortedList
 
 from zope.interface import implementer
 
@@ -32,15 +36,23 @@ class ResultNotFound(Exception):
     """
 
 
+class BadRequest(Exception):
+    """
+    Bad request parameters or content.
+    """
+
+
 @implementer(IBackend)
 class InMemoryBackend(object):
     """
-    The backend that simply drops all results.
-
-    :ivar dict results: Stored results by their identifiers.
+    The backend that keeps the results in the memory.
     """
     def __init__(self):
-        self._results = {}
+        def get_timestamp(result):
+            return timestamp_parser.parse(result['timestamp'])
+
+        self._results = dict()
+        self._sorted = SortedList(key=get_timestamp)
 
     def store(self, result):
         """
@@ -52,6 +64,7 @@ class InMemoryBackend(object):
         """
         id = uuid4().hex
         self._results[id] = result
+        self._sorted.add(result)
         return succeed(id)
 
     def retrieve(self, id):
@@ -63,14 +76,16 @@ class InMemoryBackend(object):
         except KeyError:
             return fail(ResultNotFound())
 
-    def query(self, filter):
+    def query(self, filter, limit=None):
         """
         Return matching results.
         """
-        matching = [
-            r for r in self._results.viewvalues()
-            if filter.viewitems() <= r.viewitems()
-        ]
+        matching = []
+        for result in reversed(self._sorted):
+            if len(matching) == limit:
+                break
+            if filter.viewitems() <= result.viewitems():
+                matching.append(result)
         return succeed(matching)
 
     def delete(self, id):
@@ -78,7 +93,8 @@ class InMemoryBackend(object):
         Delete a result by the given identifier.
         """
         try:
-            del self._results[id]
+            result = self._results.pop(id)
+            self._sorted.remove(result)
             return succeed(None)
         except KeyError:
             return fail(ResultNotFound())
@@ -104,6 +120,13 @@ class BenchmarkAPI_V1(object):
         request.setResponseCode(NOT_FOUND)
         return ""
 
+    @app.handle_errors(BadRequest)
+    def _bad_request(self, request, failure):
+        err(failure, "Bad request")
+        request.setResponseCode(BAD_REQUEST)
+        request.setHeader(b'content-type', b'application/json')
+        return dumps({"message": failure.value.message})
+
     @app.route("/benchmark-results", methods=['POST'])
     def post(self, request):
         """
@@ -114,10 +137,11 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         try:
             json = loads(request.content.read())
+            timestamp_parser.parse(json['timestamp'])
+        except KeyError as e:
+            raise BadRequest("'{}' is missing".format(e.message))
         except ValueError as e:
-            err(e, "failed to parse result")
-            request.setResponseCode(BAD_REQUEST)
-            return dumps({"message": e.message})
+            raise BadRequest(e.message)
 
         d = self.backend.store(json)
 
@@ -162,6 +186,61 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         request.setResponseCode(NO_CONTENT)
         return self.backend.delete(id)
+
+    @app.route("/benchmark-results", methods=['GET'])
+    def query(self, request):
+        """
+        Query the previously stored benchmarking results.
+
+        Currently this method only supports filtering the results by the
+        branch name.
+        There is no support for paging of results, but a limit on the
+        number of the results to return may be specified.
+        The returned results are ordered by the timestamp in descending
+        order.
+
+        :param twisted.web.http.Request request: The request.
+        """
+        request.setHeader(b'content-type', b'application/json')
+        params = self._parse_query_args(request.args)
+        d = self.backend.query(**params)
+
+        def got_results(results):
+            result = {"version": self.version, "results": results}
+            return dumps(result)
+
+        d.addCallback(got_results)
+        return d
+
+    @staticmethod
+    def _parse_query_args(args):
+        def ensure_one_value(key, values):
+            if len(values) != 1:
+                raise BadRequest("'{}' should have one value".format(key))
+            return values[0]
+
+        limit = None
+        filter = {}
+        for k, v in args.iteritems():
+            if k == 'limit':
+                limit = ensure_one_value(k, v)
+                try:
+                    limit = int(limit)
+                    if limit < 0:
+                        raise BadRequest(
+                            "limit is not a non-negative integer: {}".
+                            format(limit)
+                        )
+                except ValueError:
+                    raise BadRequest(
+                        "limit is not an integer: '{}'".format(limit)
+                    )
+            elif k == 'branch':
+                branch = ensure_one_value(k, v)
+                filter['userdata'] = {'branch': branch}
+            else:
+                raise BadRequest("unexpected query argument '{}'".format(k))
+        return {'filter': filter, 'limit': limit}
 
 
 def create_api_service(endpoint):

@@ -1,4 +1,6 @@
+from datetime import datetime
 from json import dumps, loads
+from urllib import urlencode
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
@@ -9,11 +11,13 @@ from twisted.web import client, http, server
 from twisted.web.iweb import IBodyProducer
 
 from testtools import TestCase
-from testtools.deferredruntest import AsynchronousDeferredRunTest
+from testtools.deferredruntest import (
+    AsynchronousDeferredRunTest, flush_logged_errors
+)
 
 from zope.interface import implementer
 
-from benchmark.httpapi import BenchmarkAPI_V1, InMemoryBackend
+from benchmark.httpapi import BenchmarkAPI_V1, InMemoryBackend, BadRequest
 
 
 @implementer(IBodyProducer)
@@ -57,7 +61,14 @@ class BenchmarkAPITests(TestCase):
     # because we test HTTP requests via an actual TCP/IP connection.
     run_tests_with = AsynchronousDeferredRunTest.make_factory(timeout=1)
 
-    RESULT = {'branch': 'branch1', 'run': 1, 'result': 1}
+    RESULT = {u"userdata": {u"branch": "master"}, u"run": 1, u"result": 1,
+              u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat(), }
+
+    NO_TIMESTAMP = {u"userdata": {u"branch": "master"}, u"run": 1,
+                    u"result": 1, }
+
+    BAD_TIMESTAMP = {u"userdata": {u"branch": "master"}, u"run": 1,
+                     u"result": 1, u"timestamp": "noonish", }
 
     def setUp(self):
         super(BenchmarkAPITests, self).setUp()
@@ -121,6 +132,24 @@ class BenchmarkAPITests(TestCase):
         """
         req = self.submit(self.RESULT)
         req.addCallback(self.check_response_code, http.CREATED)
+        return req
+
+    def test_no_timestamp(self):
+        """
+        Valid JSON with a missing timestamp is an HTTP BAD_REQUEST.
+        """
+        req = self.submit(self.NO_TIMESTAMP)
+        req.addCallback(self.check_response_code, http.BAD_REQUEST)
+        req.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return req
+
+    def test_bad_timestamp(self):
+        """
+        Valid JSON with an invalid timestamp is an HTTP BAD_REQUEST.
+        """
+        req = self.submit(self.BAD_TIMESTAMP)
+        req.addCallback(self.check_response_code, http.BAD_REQUEST)
+        req.addCallback(lambda _: flush_logged_errors(BadRequest))
         return req
 
     def test_submit_response_format(self):
@@ -272,3 +301,207 @@ class BenchmarkAPITests(TestCase):
         req = self.agent.request("DELETE", location)
         req.addCallback(self.check_response_code, http.NOT_FOUND)
         return req
+
+    BRANCH1_RESULT1 = {u"userdata": {u"branch": u"1"}, u"value": 100,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 5).isoformat()}
+    BRANCH1_RESULT2 = {u"userdata": {u"branch": u"1"}, u"value": 120,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 7).isoformat()}
+    BRANCH2_RESULT1 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 6).isoformat()}
+    BRANCH2_RESULT2 = {u"userdata": {u"branch": u"2"}, u"value": 110,
+                       u"timestamp": datetime(2016, 1, 1, 0, 0, 8).isoformat()}
+
+    def setup_results(self):
+        """
+        Submit some results for testing various queries against them.
+        """
+
+        # Shuffle the results before submitting them.
+        results = [
+            self.BRANCH2_RESULT1, self.BRANCH1_RESULT1, self.BRANCH2_RESULT2,
+            self.BRANCH1_RESULT2
+        ]
+
+        def chained_submit(_, result):
+            """
+            Discard result of a previous submit and do a new one.
+            """
+            return self.submit(result)
+
+        # Sequentially submit the results.
+        d = succeed(None)
+        for result in results:
+            d.addCallback(chained_submit, result)
+        return d
+
+    def run_query(self, ignored, filter=None, limit=None):
+        """
+        Invoke the query interface of the HTTP API.
+
+        :param dict filter: The data that the results must include.
+        :param int limit: The limit on how many results to return.
+        :return: Deferred that fires with a HTTP response.
+        """
+        query = {}
+        if filter:
+            query = filter.copy()
+        if limit is not None:
+            query["limit"] = limit
+        if query:
+            query_string = "?" + urlencode(query, doseq=True)
+        else:
+            query_string = ""
+        return self.agent.request("GET", "/benchmark-results" + query_string)
+
+    def check_query_result(self, response, expected_results,
+                           expected_code=200):
+        """
+        Check that the given response matches the expected response code
+        and that the content is valid JSON that contains the expected
+        result.
+
+        :param response: The response to check.
+        :param expected_results: The expected results that should be in
+            the response.
+        :type expected_results: list of dict
+        :param expected_code: The expected response code.
+        """
+        self.check_response_code(response, expected_code)
+
+        d = client.readBody(response)
+
+        def check_body(body):
+            data = loads(body)
+            self.assertIn('version', data)
+            self.assertEqual(data['version'], 1)
+            self.assertIn('results', data)
+            results = data['results']
+            self.assertEqual(expected_results, results)
+
+        d.addCallback(check_body)
+        return d
+
+    def test_query_no_filter_no_limit(self):
+        """
+        All results are returned if no filter and no limit are given.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query)
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[
+                self.BRANCH2_RESULT2, self.BRANCH1_RESULT2,
+                self.BRANCH2_RESULT1, self.BRANCH1_RESULT1
+            ],
+        )
+        return d
+
+    def test_query_with_filter(self):
+        """
+        All matching results are returned if a filter is given.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": u"1"})
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[
+                self.BRANCH1_RESULT2, self.BRANCH1_RESULT1,
+            ],
+        )
+        d.addCallback(self.run_query, filter={u"branch": u"2"})
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[
+                self.BRANCH2_RESULT2, self.BRANCH2_RESULT1
+            ],
+        )
+        return d
+
+    def test_query_with_zero_limit(self):
+        """
+        An empty set of results are returned for a limit of zero.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=0)
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[],
+        )
+        return d
+
+    def test_query_with_limit(self):
+        """
+        The latest ``limit`` results are returned if no filter is set
+        and the specified limit is less than the total number of
+        results.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=2)
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[
+                self.BRANCH2_RESULT2,
+                self.BRANCH1_RESULT2
+            ],
+        )
+        return d
+
+    def test_query_with_filter_and_limit(self):
+        """
+        The latest ``limit`` results which match the specified filter
+        are returned if the limit is less than the total number of
+        results.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": u"1"}, limit=1)
+        d.addCallback(
+            self.check_query_result,
+            expected_results=[
+                self.BRANCH1_RESULT2,
+            ],
+        )
+        return d
+
+    def test_unsupported_query_arg(self):
+        """
+        ``query`` raises ``BadRequest`` when an unsupported query
+        argument is specified.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"unsupported": u"ignored"})
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_multiple_query_args_of_same_type(self):
+        """
+        ``query`` raises ``BadRequest`` when multiple values for a key
+        are specified.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, filter={u"branch": [u"1", u"2"]})
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_non_integer_limit_query_arg(self):
+        """
+        ``query`` raises ``BadRequest`` when a non-integer value is
+        is specified for the `limit` key.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit="one")
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d
+
+    def test_query_with_negative_limit(self):
+        """
+        ``query`` raises ``BadRequest`` when a negative value is
+        specified for the `limit` key.
+        """
+        d = self.setup_results()
+        d.addCallback(self.run_query, limit=-1)
+        d.addCallback(self.check_response_code, http.BAD_REQUEST)
+        d.addCallback(lambda _: flush_logged_errors(BadRequest))
+        return d

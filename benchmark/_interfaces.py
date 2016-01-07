@@ -28,7 +28,7 @@ class IBackend(Interface):
         :return: A Deferred that fires with the result in the JSON format.
         """
 
-    def query(filter):
+    def query(filter, limit):
         """
         Retrieve previously stored results that match the given filter.
 
@@ -36,7 +36,10 @@ class IBackend(Interface):
         filter for the fields that are specified in the filter.
 
         :param dict filter: The filter in the JSON compatible format.
-        :return: A Deferred that fires with the results in the JSON format.
+        :param int limit: The number of the results to return. The
+            results are sorted by their timestamp in descending order.
+        :return: A Deferred that fires with a list of the results
+            in the JSON compatible format.
         """
 
     def delete(id):
