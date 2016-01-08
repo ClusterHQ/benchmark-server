@@ -56,7 +56,7 @@ class InMemoryBackend(object):
     """
     The backend that keeps the results in the memory.
     """
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         def get_timestamp(result):
             return timestamp_parser.parse(result['timestamp'])
 
@@ -117,9 +117,8 @@ class TxMongoBackend(object):
     """
     The backend that uses txmongo driver to work with MongoDB.
     """
-    # TODO: provide connection parameters (address, credentials)
-    def __init__(self):
-        connection = MongoConnectionPool()
+    def __init__(self, hostname="127.0.0.1", port=27017):
+        connection = MongoConnectionPool(host=hostname, port=port)
         self.collection = connection.benchmark.results
 
     def disconnect(self):
@@ -412,7 +411,16 @@ class ServerOptions(Options):
 
     optParameters = [
         ['port', None, 8888, "The port to listen on", int],
+        ['backend', None, 'in-memory', "The persistence backend to use", str],
+        ['db-hostname', None, None, "The hostname of the database", str],
+        ['db-port', None, None, "The port of the database", str],
     ]
+
+
+_BACKENDS = {
+    'in-memory': InMemoryBackend,
+    'mongodb': TxMongoBackend,
+}
 
 
 def main(reactor, args):
@@ -427,10 +435,21 @@ def main(reactor, args):
         sys.stderr.write(options.getUsage())
         raise SystemExit(1)
 
+    def get_backend_from_options(options):
+        backend = _BACKENDS[options['backend']]
+
+        conn = dict()
+        if options['db-hostname']:
+            conn['hostname'] = options['db-hostname']
+        if options['db-port']:
+            conn['port'] = options['db-port']
+
+        return backend(**conn)
+
     startLogging(sys.stderr)
 
     endpoint = TCP4ServerEndpoint(reactor, options['port'])
-    backend = InMemoryBackend()
+    backend = get_backend_from_options(options)
     start_services(reactor, endpoint, backend)
 
     # Do not quit until the reactor is stopped.
