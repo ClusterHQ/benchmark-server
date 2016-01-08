@@ -1,5 +1,7 @@
 from testtools import TestCase
 
+from twisted.web.http import CREATED
+
 from ..httpapi import TxMongoBackend
 from ..test.test_httpapi import BenchmarkAPITestsMixin
 
@@ -17,8 +19,9 @@ class TxMongoBenchmarkAPITests(BenchmarkAPITestsMixin, TestCase):
         req = super(TxMongoBenchmarkAPITests, self).submit(result)
 
         def add_cleanup(response):
-            location = response.headers.getRawHeaders(b'Location')[0]
-            self.addCleanup(lambda: self.agent.request("DELETE", location))
+            if response.code == CREATED:
+                location = response.headers.getRawHeaders(b'Location')[0]
+                self.addCleanup(lambda: self.agent.request("DELETE", location))
             return response
 
         req.addCallback(add_cleanup)
