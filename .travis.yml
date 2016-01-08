@@ -5,5 +5,8 @@ sudo: false
 install:
   - pip install -e .[dev]
 
+services:
+  - mongodb
+
 script:
-  - trial benchmark.test
+  - trial benchmark
