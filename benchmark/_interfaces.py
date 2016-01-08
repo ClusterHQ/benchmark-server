@@ -43,7 +43,8 @@ class IBackend(Interface):
         filter for the fields that are specified in the filter.
 
         :param dict filter: The filter in the JSON compatible format.
-        :param int limit: The number of the *latest* results to return.
+        :param int limit: The number of the results to return. The
+            results are sorted by their timestamp in descending order.
         :return: A Deferred that fires with a list of the results
             in the JSON compatible format.
         """

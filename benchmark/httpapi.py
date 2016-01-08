@@ -88,16 +88,16 @@ class InMemoryBackend(object):
         except KeyError:
             return fail(ResultNotFound())
 
-    def query(self, filter, limit):
+    def query(self, filter, limit=None):
         """
         Return matching results.
         """
         matching = []
         for result in reversed(self._sorted):
+            if len(matching) == limit:
+                break
             if filter.viewitems() <= result.viewitems():
                 matching.append(result)
-            if limit > 0 and len(matching) == limit:
-                break
         return succeed(matching)
 
     def delete(self, id):
@@ -252,7 +252,6 @@ class BenchmarkAPI_V1(object):
         request.setHeader(b'content-type', b'application/json')
         try:
             json = loads(request.content.read())
-            json['userdata']['branch']
             timestamp_parser.parse(json['timestamp'])
         except KeyError as e:
             raise BadRequest("'{}' is missing".format(e.message))
@@ -308,11 +307,12 @@ class BenchmarkAPI_V1(object):
         """
         Query the previously stored benchmarking results.
 
-        Currently this method supports filtering only by the branch name.
-        There is no support for the results paging, but a limit on the number
-        of the results is supported.
-        The order of the results is fixed at the moment and it's by
-        by the result timestamp in the descending order.
+        Currently this method only supports filtering the results by the
+        branch name.
+        There is no support for paging of results, but a limit on the
+        number of the results to return may be specified.
+        The returned results are ordered by the timestamp in descending
+        order.
 
         :param twisted.web.http.Request request: The request.
         """
@@ -334,13 +334,18 @@ class BenchmarkAPI_V1(object):
                 raise BadRequest("'{}' should have one value".format(key))
             return values[0]
 
-        limit = 0
+        limit = None
         filter = {}
         for k, v in args.iteritems():
             if k == 'limit':
                 limit = ensure_one_value(k, v)
                 try:
                     limit = int(limit)
+                    if limit < 0:
+                        raise BadRequest(
+                            "limit is not a non-negative integer: {}".
+                            format(limit)
+                        )
                 except ValueError:
                     raise BadRequest(
                         "limit is not an integer: '{}'".format(limit)
