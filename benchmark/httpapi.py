@@ -168,7 +168,7 @@ class TxMongoBackend(object):
         d.addCallback(post_process)
         return d
 
-    def query(self, filter, limit):
+    def query(self, filter, limit=None):
         """
         Return matching results.
         """
@@ -180,14 +180,19 @@ class TxMongoBackend(object):
         # XXX Sorting by _id can be unreliable unless we generate IDs
         # ourselves.  Also, it's better to sort by a timestamp embedded
         # into result documents.
+        if limit == 0:
+            return succeed([])
+
         sort_filter = orderby(DESCENDING('sort$timestamp'))
-        d = self.collection.find(
-            filter,
-            limit=limit,
+
+        find_args = dict(
             filter=sort_filter,
             fields={'_id': False, 'sort$timestamp': False}
         )
-        return d
+        if limit:
+            find_args['limit'] = limit
+
+        return self.collection.find(filter, **find_args)
 
     def delete(self, id):
         """
