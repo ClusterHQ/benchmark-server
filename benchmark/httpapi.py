@@ -154,16 +154,17 @@ class TxMongoBackend(object):
         def post_process(result):
             if result is None:
                 raise ResultNotFound()
-            # Removing _id because it is not a part of the original result.
-            # If we chose to keep _id, then note that its value
-            # is an ObjectId object that can not be serialized to JSON.
-            # Either a custom JSONEncoder or bson.json_util.dumps would
-            # be needed.
-            del result['_id']
-            del result['sort$timestamp']
             return result
 
-        d = self.collection.find_one({'_id': object_id})
+        # Do not include the '_id' and 'sort$timestamp' fields in the
+        # results as these are not part of the original document.
+        # If we later choose to include '_id', its type is 'ObjectId'
+        # which can not be serialized to JSON. Either a custom
+        # JSONEncoder or bson.json_util.dumps would be needed.
+        d = self.collection.find_one(
+            filter={'_id': object_id},
+            fields={'_id': False, 'sort$timestamp': False}
+        )
         d.addCallback(post_process)
         return d
 
@@ -171,19 +172,16 @@ class TxMongoBackend(object):
         """
         Return matching results.
         """
-        # _id is removed from results because it is not a part of the
-        # original result.  See the comment in retrieve() for details.
-        #
-        # XXX Note how txmongo API differs from that of pymongo,
-        # particularly collection.find() does not support sort argument.
-        # XXX Sorting by _id can be unreliable unless we generate IDs
-        # ourselves.  Also, it's better to sort by a timestamp embedded
-        # into result documents.
         if limit == 0:
             return succeed([])
 
+        # The txmongo API differs from pymongo with regard to sorting.
+        # To sort results when making a query using txmongo, a query
+        # filter needs to be created and passed to collection.find().
         sort_filter = orderby(DESCENDING('sort$timestamp'))
 
+        # Do not include the '_id' and 'sort$timestamp' fields in the
+        # results as these are not part of the original document.
         find_args = dict(
             filter=sort_filter,
             fields={'_id': False, 'sort$timestamp': False}
