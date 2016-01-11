@@ -407,18 +407,32 @@ def start_services(reactor, endpoint, backend):
 class ServerOptions(Options):
     longdesc = "Run the benchmark results server"
 
+    _BACKENDS = {
+        'in-memory': InMemoryBackend,
+        'mongodb': TxMongoBackend,
+    }
+
     optParameters = [
         ['port', None, 8888, "The port to listen on", int],
-        ['backend', None, 'in-memory', "The persistence backend to use", str],
+        ['backend', None, 'in-memory', "The persistence backend to use. "
+         "One of {}.".format(', '.join(_BACKENDS)), str],
         ['db-hostname', None, None, "The hostname of the database", str],
         ['db-port', None, None, "The port of the database", str],
     ]
 
+    def postOptions(self):
+        try:
+            backend = self._BACKENDS[self['backend']]
+        except KeyError:
+            raise UsageError("Unknown backend {}".format(self['backend']))
 
-_BACKENDS = {
-    'in-memory': InMemoryBackend,
-    'mongodb': TxMongoBackend,
-}
+        conn = dict()
+        if self['db-hostname']:
+            conn['hostname'] = self['db-hostname']
+        if self['db-port']:
+            conn['port'] = self['db-port']
+
+        self['backend'] = backend(**conn)
 
 
 def main(reactor, args):
@@ -433,21 +447,10 @@ def main(reactor, args):
         sys.stderr.write(options.getUsage())
         raise SystemExit(1)
 
-    def get_backend_from_options(options):
-        backend = _BACKENDS[options['backend']]
-
-        conn = dict()
-        if options['db-hostname']:
-            conn['hostname'] = options['db-hostname']
-        if options['db-port']:
-            conn['port'] = options['db-port']
-
-        return backend(**conn)
-
     startLogging(sys.stderr)
 
     endpoint = TCP4ServerEndpoint(reactor, options['port'])
-    backend = get_backend_from_options(options)
+    backend = options['backend']
     start_services(reactor, endpoint, backend)
 
     # Do not quit until the reactor is stopped.
