@@ -103,6 +103,15 @@ class BenchmarkAPITestsMixin(object):
         body = StringProducer(json)
         req = self.agent.request("POST", "/benchmark-results",
                                  bodyProducer=body)
+
+        def add_cleanup(response):
+            if response.code == http.CREATED:
+                location = response.headers.getRawHeaders(b'Location')[0]
+                self.addCleanup(lambda: self.agent.request("DELETE", location))
+            return response
+
+        req.addCallback(add_cleanup)
+
         return req
 
     def check_response_code(self, response, expected_code):
