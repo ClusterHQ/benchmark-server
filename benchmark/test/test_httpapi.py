@@ -270,6 +270,10 @@ class BenchmarkAPITestsMixin(object):
         Deleted result can not be retrieved.
         """
         req = self.submit(self.RESULT)
+        # Submit another result, so that we can catch a situation
+        # where we get a wrong result instead of the requested,
+        # already removed one.
+        req = req.addCallback(lambda _: self.submit(self.RESULT))
 
         def delete_and_get(response):
             location = response.headers.getRawHeaders(b'Location')[0]
@@ -288,6 +292,9 @@ class BenchmarkAPITestsMixin(object):
         Deleted result can not be deleted again.
         """
         req = self.submit(self.RESULT)
+        # Submit another result to make sure that the second delete
+        # does not succeed on a wrong result.
+        req = req.addCallback(lambda _: self.submit(self.RESULT))
 
         def delete_twice(response):
             location = response.headers.getRawHeaders(b'Location')[0]

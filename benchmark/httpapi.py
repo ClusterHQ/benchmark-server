@@ -162,7 +162,7 @@ class TxMongoBackend(object):
         # which can not be serialized to JSON. Either a custom
         # JSONEncoder or bson.json_util.dumps would be needed.
         d = self.collection.find_one(
-            filter={'_id': object_id},
+            {'_id': object_id},
             fields={'_id': False, 'sort$timestamp': False}
         )
         d.addCallback(post_process)
