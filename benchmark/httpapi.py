@@ -45,6 +45,12 @@ class ResultNotFound(Exception):
     """
 
 
+class BadResultId(ResultNotFound):
+    """
+    The identifier is not recognized as a valid ID by a backend.
+    """
+
+
 class BadRequest(Exception):
     """
     Bad request parameters or content.
@@ -86,7 +92,7 @@ class InMemoryBackend(object):
         try:
             return succeed(self._results[id])
         except KeyError:
-            return fail(ResultNotFound())
+            return fail(ResultNotFound(id))
 
     def query(self, filter, limit=None):
         """
@@ -109,7 +115,7 @@ class InMemoryBackend(object):
             self._sorted.remove(result)
             return succeed(None)
         except KeyError:
-            return fail(ResultNotFound())
+            return fail(ResultNotFound(id))
 
 
 @implementer(IBackend)
@@ -149,11 +155,11 @@ class TxMongoBackend(object):
         try:
             object_id = ObjectId(id)
         except InvalidId:
-            raise ResultNotFound()
+            raise BadResultId(id)
 
         def post_process(result):
             if result is None:
-                raise ResultNotFound()
+                raise ResultNotFound(id)
             return result
 
         # Do not include the '_id' and 'sort$timestamp' fields in the
@@ -198,11 +204,11 @@ class TxMongoBackend(object):
         try:
             object_id = ObjectId(id)
         except InvalidId:
-            raise ResultNotFound()
+            raise BadResultId(id)
 
         def handle_result(result):
             if result.deleted_count == 0:
-                raise ResultNotFound()
+                raise ResultNotFound(id)
             return None
 
         d = self.collection.delete_one({'_id': object_id})
@@ -225,24 +231,39 @@ class BenchmarkAPI_V1(object):
         """
         self.backend = backend
 
+    @staticmethod
+    def _make_error_body(message):
+        return dumps({"message": message})
+
+    @app.handle_errors(BadResultId)
+    def _bad_id(self, request, failure):
+        request.setResponseCode(NOT_FOUND)
+        request.setHeader(b'content-type', b'application/json')
+        return self._make_error_body(
+            "Result ID {} is not valid".format(failure.value.message)
+        )
+
     @app.handle_errors(ResultNotFound)
     def _not_found(self, request, failure):
         request.setResponseCode(NOT_FOUND)
-        return ""
+        request.setHeader(b'content-type', b'application/json')
+        return self._make_error_body(
+            "No result with ID {}".format(failure.value.message)
+        )
 
     @app.handle_errors(BadRequest)
     def _bad_request(self, request, failure):
         err(failure, "Bad request")
         request.setResponseCode(BAD_REQUEST)
         request.setHeader(b'content-type', b'application/json')
-        return dumps({"message": failure.value.message})
+        return self._make_error_body(failure.value.message)
 
     @app.handle_errors(Exception)
     def _unhandled_error(self, request, failure):
         err(failure, "Unhandled error")
         request.setResponseCode(INTERNAL_SERVER_ERROR)
         request.setHeader(b'content-type', b'application/json')
-        return dumps({"message": failure.value.message})
+        return self._make_error_body(failure.value.message)
 
     @app.route("/benchmark-results", methods=['POST'])
     def post(self, request):
