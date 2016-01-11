@@ -53,7 +53,7 @@ class TestEndpoint(TCP4ServerEndpoint):
         return d
 
 
-class BenchmarkAPITests(TestCase):
+class BenchmarkAPITestsMixin(object):
     """
     Tests for BenchmarkAPI.
     """
@@ -71,9 +71,8 @@ class BenchmarkAPITests(TestCase):
                      u"result": 1, u"timestamp": "noonish", }
 
     def setUp(self):
-        super(BenchmarkAPITests, self).setUp()
+        super(BenchmarkAPITestsMixin, self).setUp()
 
-        self.backend = InMemoryBackend()
         api = BenchmarkAPI_V1(self.backend)
         site = server.Site(api.app.resource())
 
@@ -104,6 +103,15 @@ class BenchmarkAPITests(TestCase):
         body = StringProducer(json)
         req = self.agent.request("POST", "/benchmark-results",
                                  bodyProducer=body)
+
+        def add_cleanup(response):
+            if response.code == http.CREATED:
+                location = response.headers.getRawHeaders(b'Location')[0]
+                self.addCleanup(lambda: self.agent.request("DELETE", location))
+            return response
+
+        req.addCallback(add_cleanup)
+
         return req
 
     def check_response_code(self, response, expected_code):
@@ -262,6 +270,10 @@ class BenchmarkAPITests(TestCase):
         Deleted result can not be retrieved.
         """
         req = self.submit(self.RESULT)
+        # Submit another result, so that we can catch a situation
+        # where we get a wrong result instead of the requested,
+        # already removed one.
+        req = req.addCallback(lambda _: self.submit(self.RESULT))
 
         def delete_and_get(response):
             location = response.headers.getRawHeaders(b'Location')[0]
@@ -280,6 +292,9 @@ class BenchmarkAPITests(TestCase):
         Deleted result can not be deleted again.
         """
         req = self.submit(self.RESULT)
+        # Submit another result to make sure that the second delete
+        # does not succeed on a wrong result.
+        req = req.addCallback(lambda _: self.submit(self.RESULT))
 
         def delete_twice(response):
             location = response.headers.getRawHeaders(b'Location')[0]
@@ -505,3 +520,9 @@ class BenchmarkAPITests(TestCase):
         d.addCallback(self.check_response_code, http.BAD_REQUEST)
         d.addCallback(lambda _: flush_logged_errors(BadRequest))
         return d
+
+
+class InMemoryBenchmarkAPITests(BenchmarkAPITestsMixin, TestCase):
+    def setUp(self):
+        self.backend = InMemoryBackend()
+        super(InMemoryBenchmarkAPITests, self).setUp()

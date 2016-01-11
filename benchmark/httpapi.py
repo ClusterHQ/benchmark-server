@@ -10,20 +10,29 @@ from uuid import uuid4
 from urlparse import urljoin
 
 from twisted.application.internet import StreamServerEndpointService
+from twisted.application.service import MultiService, Service
 from twisted.internet.defer import Deferred, fail, succeed
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet.task import react
 from twisted.python.log import startLogging, err, msg
 from twisted.python.usage import Options, UsageError
-from twisted.web.http import BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND
+from twisted.web.http import (
+    BAD_REQUEST, CREATED, NO_CONTENT, NOT_FOUND, INTERNAL_SERVER_ERROR
+)
 from twisted.web.resource import Resource
 from twisted.web.server import Site
+
+from bson.errors import InvalidId
+from bson.objectid import ObjectId
 
 from dateutil import parser as timestamp_parser
 
 from klein import Klein
 
 from sortedcontainers import SortedList
+
+from txmongo import MongoConnectionPool
+from txmongo.filter import DESCENDING, sort as orderby
 
 from zope.interface import implementer
 
@@ -33,6 +42,12 @@ from ._interfaces import IBackend
 class ResultNotFound(Exception):
     """
     Exception indicating that a result with a given identifier is not found.
+    """
+
+
+class BadResultId(ResultNotFound):
+    """
+    The identifier is not recognized as a valid ID by a backend.
     """
 
 
@@ -47,12 +62,15 @@ class InMemoryBackend(object):
     """
     The backend that keeps the results in the memory.
     """
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         def get_timestamp(result):
             return timestamp_parser.parse(result['timestamp'])
 
         self._results = dict()
         self._sorted = SortedList(key=get_timestamp)
+
+    def disconnect(self):
+        return succeed(None)
 
     def store(self, result):
         """
@@ -74,7 +92,7 @@ class InMemoryBackend(object):
         try:
             return succeed(self._results[id])
         except KeyError:
-            return fail(ResultNotFound())
+            return fail(ResultNotFound(id))
 
     def query(self, filter, limit=None):
         """
@@ -97,7 +115,105 @@ class InMemoryBackend(object):
             self._sorted.remove(result)
             return succeed(None)
         except KeyError:
-            return fail(ResultNotFound())
+            return fail(ResultNotFound(id))
+
+
+@implementer(IBackend)
+class TxMongoBackend(object):
+    """
+    The backend that uses txmongo driver to work with MongoDB.
+    """
+    def __init__(self, hostname="127.0.0.1", port=27017):
+        connection = MongoConnectionPool(host=hostname, port=port)
+        self.collection = connection.benchmark.results
+
+    def disconnect(self):
+        return self.collection.database.connection.disconnect()
+
+    def store(self, result):
+        """
+        Store a single benchmarking result and return its identifier.
+
+        :param dict result: The result in the JSON compatible format.
+        :return: A Deferred that produces an identifier for the stored
+            result.
+        """
+        def to_str(result):
+            return str(result.inserted_id)
+
+        # Store the timestamp field as a special hidden datetime field
+        # for sorting.
+        result['sort$timestamp'] = timestamp_parser.parse(result['timestamp'])
+        id = self.collection.insert_one(result)
+        id.addCallback(to_str)
+        return id
+
+    def retrieve(self, id):
+        """
+        Retrive a result by the given identifier.
+        """
+        try:
+            object_id = ObjectId(id)
+        except InvalidId:
+            raise BadResultId(id)
+
+        def post_process(result):
+            if result is None:
+                raise ResultNotFound(id)
+            return result
+
+        # Do not include the '_id' and 'sort$timestamp' fields in the
+        # results as these are not part of the original document.
+        # If we later choose to include '_id', its type is 'ObjectId'
+        # which can not be serialized to JSON. Either a custom
+        # JSONEncoder or bson.json_util.dumps would be needed.
+        d = self.collection.find_one(
+            {'_id': object_id},
+            fields={'_id': False, 'sort$timestamp': False}
+        )
+        d.addCallback(post_process)
+        return d
+
+    def query(self, filter, limit=None):
+        """
+        Return matching results.
+        """
+        if limit == 0:
+            return succeed([])
+
+        # The txmongo API differs from pymongo with regard to sorting.
+        # To sort results when making a query using txmongo, a query
+        # filter needs to be created and passed to collection.find().
+        sort_filter = orderby(DESCENDING('sort$timestamp'))
+
+        # Do not include the '_id' and 'sort$timestamp' fields in the
+        # results as these are not part of the original document.
+        find_args = dict(
+            filter=sort_filter,
+            fields={'_id': False, 'sort$timestamp': False}
+        )
+        if limit:
+            find_args['limit'] = limit
+
+        return self.collection.find(filter, **find_args)
+
+    def delete(self, id):
+        """
+        Delete a result by the given identifier.
+        """
+        try:
+            object_id = ObjectId(id)
+        except InvalidId:
+            raise BadResultId(id)
+
+        def handle_result(result):
+            if result.deleted_count == 0:
+                raise ResultNotFound(id)
+            return None
+
+        d = self.collection.delete_one({'_id': object_id})
+        d.addCallback(handle_result)
+        return d
 
 
 class BenchmarkAPI_V1(object):
@@ -115,17 +231,39 @@ class BenchmarkAPI_V1(object):
         """
         self.backend = backend
 
+    @staticmethod
+    def _make_error_body(message):
+        return dumps({"message": message})
+
+    @app.handle_errors(BadResultId)
+    def _bad_id(self, request, failure):
+        request.setResponseCode(NOT_FOUND)
+        request.setHeader(b'content-type', b'application/json')
+        return self._make_error_body(
+            "Result ID {} is not valid".format(failure.value.message)
+        )
+
     @app.handle_errors(ResultNotFound)
     def _not_found(self, request, failure):
         request.setResponseCode(NOT_FOUND)
-        return ""
+        request.setHeader(b'content-type', b'application/json')
+        return self._make_error_body(
+            "No result with ID {}".format(failure.value.message)
+        )
 
     @app.handle_errors(BadRequest)
     def _bad_request(self, request, failure):
         err(failure, "Bad request")
         request.setResponseCode(BAD_REQUEST)
         request.setHeader(b'content-type', b'application/json')
-        return dumps({"message": failure.value.message})
+        return self._make_error_body(failure.value.message)
+
+    @app.handle_errors(Exception)
+    def _unhandled_error(self, request, failure):
+        err(failure, "Unhandled error")
+        request.setResponseCode(INTERNAL_SERVER_ERROR)
+        request.setHeader(b'content-type', b'application/json')
+        return self._make_error_body(failure.value.message)
 
     @app.route("/benchmark-results", methods=['POST'])
     def post(self, request):
@@ -243,7 +381,7 @@ class BenchmarkAPI_V1(object):
         return {'filter': filter, 'limit': limit}
 
 
-def create_api_service(endpoint):
+def create_api_service(endpoint, backend):
     """
     Create a Twisted Service that serves the API on the given endpoint.
 
@@ -251,18 +389,72 @@ def create_api_service(endpoint):
     :return: Service that will listen on the endpoint using HTTP API server.
     """
     api_root = Resource()
-    api = BenchmarkAPI_V1(InMemoryBackend())
+    api = BenchmarkAPI_V1(backend)
     api_root.putChild('v1', api.app.resource())
 
     return StreamServerEndpointService(endpoint, Site(api_root))
 
 
+class BackendService(Service):
+    """
+    A basic Twisted service that wraps the peristence backend.
+    """
+    def __init__(self, backend):
+        super(Service, self).__init__()
+        self.backend = backend
+
+    def stopService(self):
+        return self.backend.disconnect()
+
+
+def start_services(reactor, endpoint, backend):
+    top_service = MultiService()
+    api_service = create_api_service(endpoint, backend)
+    api_service.setServiceParent(top_service)
+    backend_service = BackendService(backend)
+    backend_service.setServiceParent(top_service)
+
+    # XXX Setting _raiseSynchronously makes startService raise an exception
+    # on error rather than just logging and dropping it.
+    # This should be a public API, Twisted bug #8170.
+    api_service._raiseSynchronously = True
+    top_service.startService()
+    reactor.addSystemEventTrigger(
+        "before",
+        "shutdown",
+        lambda: top_service.stopService,
+    )
+
+
 class ServerOptions(Options):
     longdesc = "Run the benchmark results server"
 
+    _BACKENDS = {
+        'in-memory': InMemoryBackend,
+        'mongodb': TxMongoBackend,
+    }
+
     optParameters = [
         ['port', None, 8888, "The port to listen on", int],
+        ['backend', None, 'in-memory', "The persistence backend to use. "
+         "One of {}.".format(', '.join(_BACKENDS)), str],
+        ['db-hostname', None, None, "The hostname of the database", str],
+        ['db-port', None, None, "The port of the database", str],
     ]
+
+    def postOptions(self):
+        try:
+            backend = self._BACKENDS[self['backend']]
+        except KeyError:
+            raise UsageError("Unknown backend {}".format(self['backend']))
+
+        conn = dict()
+        if self['db-hostname']:
+            conn['hostname'] = self['db-hostname']
+        if self['db-port']:
+            conn['port'] = self['db-port']
+
+        self['backend'] = backend(**conn)
 
 
 def main(reactor, args):
@@ -278,17 +470,11 @@ def main(reactor, args):
         raise SystemExit(1)
 
     startLogging(sys.stderr)
-    service = create_api_service(TCP4ServerEndpoint(reactor, options['port']))
 
-    # XXX Make startService() raise an exception on an error
-    # instead of just logging and dropping it.
-    service._raiseSynchronously = True
-    service.startService()
-    reactor.addSystemEventTrigger(
-        "before",
-        "shutdown",
-        lambda: service.stopService,
-    )
+    endpoint = TCP4ServerEndpoint(reactor, options['port'])
+    backend = options['backend']
+    start_services(reactor, endpoint, backend)
+
     # Do not quit until the reactor is stopped.
     return Deferred()
 

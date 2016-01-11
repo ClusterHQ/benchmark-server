@@ -11,6 +11,13 @@ class IBackend(Interface):
     A backend for storing and querying the results.
     """
 
+    def disconnect():
+        """
+        Perform necessary disconnect and cleanup actions.
+
+        :return: A Deferred that fires when the cleanup is done.
+        """
+
     def store(result):
         """
         Store a single benchmarking result.
