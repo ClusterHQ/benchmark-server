@@ -414,8 +414,9 @@ def start_services(reactor, endpoint, backend):
     backend_service = BackendService(backend)
     backend_service.setServiceParent(top_service)
 
-    # XXX Make startService() raise an exception on an error
-    # instead of just logging and dropping it.
+    # XXX Setting _raiseSynchronously makes startService raise an exception
+    # on error rather than just logging and dropping it.
+    # This should be a public API, Twisted bug #8170.
     api_service._raiseSynchronously = True
     top_service.startService()
     reactor.addSystemEventTrigger(
