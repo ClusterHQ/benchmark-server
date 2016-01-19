@@ -439,7 +439,7 @@ class ServerOptions(Options):
         ['backend', None, 'in-memory', "The persistence backend to use. "
          "One of {}.".format(', '.join(_BACKENDS)), str],
         ['db-hostname', None, None, "The hostname of the database", str],
-        ['db-port', None, None, "The port of the database", str],
+        ['db-port', None, None, "The port of the database", int],
     ]
 
     def postOptions(self):
