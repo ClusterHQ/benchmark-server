@@ -3,6 +3,7 @@
 A HTTP REST API for storing benchmark results.
 """
 
+import os
 import sys
 
 from json import dumps, loads
@@ -123,7 +124,9 @@ class TxMongoBackend(object):
     """
     The backend that uses txmongo driver to work with MongoDB.
     """
-    def __init__(self, hostname="127.0.0.1", port=27017):
+    def __init__(self, hostname=None, port=27017):
+        if not hostname:
+            hostname = os.environ.get('DB_PORT_27017_TCP_ADDR', '127.0.0.1')
         connection = MongoConnectionPool(host=hostname, port=port)
         self.collection = connection.benchmark.results
 

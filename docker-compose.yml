@@ -1,0 +1,11 @@
+benchmark:
+  build: .
+  expose:
+    - "8080"
+  links:
+      - db
+  ports:
+    - "8080:8080"
+  command: "--port=8080 --backend=mongodb"
+db:
+  image: mongo
