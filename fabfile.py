@@ -41,7 +41,6 @@ class BenchmarkServerCookbook():
         Make sure the ubuntu user is part of the docker group.
         """
         log_green('adding the ubuntu user to the docker group')
-        load_state_from_disk()
         with settings(hide('warnings', 'running', 'stdout', 'stderr'),
                       warn_only=True, capture=True):
             user_ensure('ubuntu', home='/home/ubuntu', shell='/bin/bash')
