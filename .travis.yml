@@ -3,7 +3,7 @@ python: 2.7
 sudo: false
 
 install:
-  - pip install -e .[dev]
+  - pip install --process-dependency-links -e .[dev]
 
 addons:
   apt:
