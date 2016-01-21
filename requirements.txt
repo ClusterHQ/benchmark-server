@@ -1,5 +1,8 @@
+bookshelf==1.1.16
+Fabric==1.10.2
 klein==0.2.3
 python-dateutil==2.4.2
+PyYAML==3.11
 sortedcontainers==1.4.4
 Twisted==15.5.0
 txmongo==15.3.1

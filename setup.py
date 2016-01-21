@@ -26,6 +26,9 @@ setup(
         # This extra is for developers who need to work on the code.
         "dev": read('dev-requirements.txt'),
     },
+    dependency_links=[
+        "git+https://github.com/ClusterHQ/bookshelf@master#egg=bookshelf-1.1.16"  # noqa
+    ],
     entry_points={},
     keywords="",
     license="Apache 2.0",
