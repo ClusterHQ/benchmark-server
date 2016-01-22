@@ -126,7 +126,7 @@ class TxMongoBackend(object):
     """
     def __init__(self, hostname=None, port=27017):
         if not hostname:
-            hostname = os.environ.get('DB_PORT_27017_TCP_ADDR', '127.0.0.1')
+            hostname = os.getenv('DB_PORT_27017_TCP_ADDR', '127.0.0.1')
         connection = MongoConnectionPool(host=hostname, port=port)
         self.collection = connection.benchmark.results
 
