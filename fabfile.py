@@ -1,8 +1,11 @@
 # vim: ai ts=4 sts=4 et sw=4 ft=python fdm=indent et foldlevel=0
 import os
+import time
 
-from fabric.api import sudo, task, env, execute
+import boto.ec2
+from fabric.api import sudo, task, env, execute, run
 from fabric.context_managers import cd, settings, hide
+from fabric.contrib import files
 from bookshelf.api_v1 import (apt_install,
                               create_docker_group,
                               create_server,
@@ -14,6 +17,8 @@ from bookshelf.api_v1 import (apt_install,
                               is_there_state,
                               load_state_from_disk,
                               log_green,
+                              log_red,
+                              log_yellow,
                               up as f_up)
 
 from cuisine import (user_ensure,
@@ -80,6 +85,8 @@ class BenchmarkServerCookbook():
                   repo)
 
         with cd(repo):
+            # XXX: Temporary checkout to test this branch
+            run("git checkout deploy-benchmark-server-FLOC-3887")
             sudo("docker-compose up")
 
 
@@ -99,6 +106,12 @@ cloud_config = {
     'description': 'Store results from benchmarking runs',
     'key_filename': os.environ['AWS_KEY_FILENAME'],
     'tags': {'name': 'benchmark_service'}
+}
+
+volume_config = {
+    'device': '/dev/sdf',
+    'mountpoint': '/data/volumes',
+    'size': 20,
 }
 
 
@@ -228,9 +241,107 @@ def up():
             env.cloud = data['cloud_type']
 
 
+def volume_metadata_exists():
+    return os.path.isfile('volume-metadata.json')
+
+
 @task
-def it():
+def configure_storage():
+    if is_there_state():
+        data = load_state_from_disk()
+        instance_id = data['id']
+        conn = boto.ec2.connect_to_region(
+            cloud_config['region'],
+            aws_access_key_id=cloud_config['access_key_id'],
+            aws_secret_access_key=cloud_config['secret_access_key']
+        )
+
+        [instance] = conn.get_only_instances(instance_id)
+
+        if volume_metadata_exists():
+            log_green('Volume exists.')
+            # At this point, we need to read the volume metadata from
+            # the local disk and use it for the remaining steps.
+        else:
+            # Create a volume and wait for it to become available.
+            vol = conn.create_volume(volume_config['size'], instance.placement)
+            vol.add_tag("Name", "benchmarking-data-mongodb")
+            while vol.update() != 'available':
+                log_yellow(
+                    "Waiting on volume {id} to become available. "
+                    "Current status: {status}".format(
+                        id=vol.id, status=vol.status
+                    )
+                )
+                time.sleep(5)
+
+        requested_device = volume_config['device']
+
+        if vol.update() == 'in-use':
+            if vol.attach_data.instance_id != instance_id:
+                log_red(
+                    "Error: {volume} is attached to wrong instance: "
+                    "{instance}".format(
+                        volume=vol.id,
+                        instance=vol.attach_data.instance
+                    )
+                )
+                # TODO: Raise an error here
+        elif vol.update() == 'available':
+            # Attach the volume and wait for it to be in use.
+            # TODO: Address the issue where the volume might be in a
+            # different availability zone.
+            conn.attach_volume(vol.id, instance_id, requested_device)
+            while vol.update() != 'in-use':
+                log_yellow(
+                    "Waiting on volume {id} to attach. "
+                    "Current status: {status}".format(
+                        id=vol.id, status=vol.status
+                    )
+                )
+                time.sleep(5)
+
+        def convert_device_path(device_path):
+            prefix = b"/dev/sd"
+            return os.path.join("/dev", "xvd" + device_path[len(prefix):])
+
+        device_path = convert_device_path(requested_device)
+
+        # Wait for device to be available within the instance.
+        while not files.exists(device_path):
+            log_yellow(
+                "Waiting on {device_path}".format(device_path=device_path)
+            )
+            time.sleep(5)
+
+        def device_has_filesystem(device_path):
+            cmd = "blkid -p -u filesystem {device}".format(device=device_path)
+            with settings(warn_only=True):
+                output = sudo(cmd)
+                if output.return_code == 2:
+                    return False
+                return True
+
+        # Create a filesystem if one doesn't exist
+        if not device_has_filesystem(device_path):
+            cmd = "mkfs -t ext4 {device}".format(device=device_path)
+            sudo(cmd)
+
+        mountpoint = volume_config['mountpoint']
+        sudo("mkdir -p {path}".format(path=mountpoint))
+        sudo(
+            "mount {device_path} {mountpoint}".format(
+                device_path=device_path, mountpoint=mountpoint
+            )
+        )
+        # TODO: Store the volume metadata locally so that it can be
+        # retrieved later.
+
+
+@task
+def start():
     execute(up)
+    execute(configure_storage)
     execute(bootstrap)
 
 
