@@ -137,21 +137,21 @@ def destroy():
     """
     Destroy an existing instance.
     """
+    if is_there_state():
+        data = load_state_from_disk()
+        cloud_type = data['cloud_type']
+        region = data['region']
+        access_key_id = cloud_config['access_key_id']
+        secret_access_key = cloud_config['secret_access_key']
+        instance_id = data['id']
+        env.user = data['username']
+        env.key_filename = cloud_config['key_filename']
 
-    data = load_state_from_disk()
-    cloud_type = data['cloud_type']
-    region = data['region']
-    access_key_id = cloud_config['access_key_id']
-    secret_access_key = cloud_config['secret_access_key']
-    instance_id = data['id']
-    env.user = data['username']
-    env.key_filename = cloud_config['key_filename']
-
-    f_destroy(cloud=cloud_type,
-              region=region,
-              instance_id=instance_id,
-              access_key_id=access_key_id,
-              secret_access_key=secret_access_key)
+        f_destroy(cloud=cloud_type,
+                  region=region,
+                  instance_id=instance_id,
+                  access_key_id=access_key_id,
+                  secret_access_key=secret_access_key)
 
 
 @task
@@ -160,20 +160,21 @@ def down():
     Halt an existing instance.
     """
 
-    data = load_state_from_disk()
-    region = data['region']
-    cloud_type = data['cloud_type']
-    access_key_id = cloud_config['access_key_id']
-    secret_access_key = cloud_config['secret_access_key']
-    instance_id = data['id']
-    env.key_filename = cloud_config['key_filename']
+    if is_there_state():
+        data = load_state_from_disk()
+        region = data['region']
+        cloud_type = data['cloud_type']
+        access_key_id = cloud_config['access_key_id']
+        secret_access_key = cloud_config['secret_access_key']
+        instance_id = data['id']
+        env.key_filename = cloud_config['key_filename']
 
-    ec2()
-    f_down(cloud=cloud_type,
-           instance_id=instance_id,
-           region=region,
-           access_key_id=access_key_id,
-           secret_access_key=secret_access_key)
+        ec2()
+        f_down(cloud=cloud_type,
+               instance_id=instance_id,
+               region=region,
+               access_key_id=access_key_id,
+               secret_access_key=secret_access_key)
 
 
 @task
