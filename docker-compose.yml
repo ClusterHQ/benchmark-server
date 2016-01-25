@@ -9,3 +9,5 @@ benchmark:
   command: "--port=8080 --backend=mongodb"
 db:
   image: mongo
+  volumes:
+    - /data/volumes:/data/db
