@@ -91,23 +91,24 @@ class BenchmarkServerCookbook():
             sudo("docker-compose up")
 
 
-cloud_config = {
-    'ami': 'ami-87bea5b7',
-    'distribution': 'ubuntu14.04',
-    'username': 'ubuntu',
-    'disk_name': '/dev/sda1',
-    'disk_size': '40',
-    'instance_type': os.getenv('AWS_INSTANCE_TYPE', 't2.micro'),
-    'key_pair': os.environ['AWS_KEY_PAIR'],
-    'region': os.getenv('AWS_REGION', 'us-west-2'),
-    'secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY'],
-    'access_key_id': os.environ['AWS_ACCESS_KEY_ID'],
-    'security_groups': ['ssh', 'benchmark-service'],
-    'instance_name': 'benchmark_service',
-    'description': 'Store results from benchmarking runs',
-    'key_filename': os.environ['AWS_KEY_FILENAME'],
-    'tags': {'name': 'benchmark_service'}
-}
+def get_cloud_config():
+    return {
+        'ami': 'ami-87bea5b7',
+        'distribution': 'ubuntu14.04',
+        'username': 'ubuntu',
+        'disk_name': '/dev/sda1',
+        'disk_size': '40',
+        'instance_type': os.getenv('AWS_INSTANCE_TYPE', 't2.micro'),
+        'key_pair': os.environ['AWS_KEY_PAIR'],
+        'region': os.getenv('AWS_REGION', 'us-west-2'),
+        'secret_access_key': os.environ['AWS_SECRET_ACCESS_KEY'],
+        'access_key_id': os.environ['AWS_ACCESS_KEY_ID'],
+        'security_groups': ['ssh', 'benchmark-service'],
+        'instance_name': 'benchmark_service',
+        'description': 'Store results from benchmarking runs',
+        'key_filename': os.environ['AWS_KEY_FILENAME'],
+        'tags': {'name': 'benchmark_service'}
+    }
 
 volume_config = {
     'device': '/dev/sdf',
@@ -130,7 +131,7 @@ def help():
         usage: fab <action>
 
         # Start the service
-        $ fab it
+        $ fab start
 
         # Provision and start the AWS instance if it does not exist,
         # otherwise start an existing instance.
@@ -151,6 +152,7 @@ def destroy():
     """
     Destroy an existing instance.
     """
+    cloud_config = get_cloud_config()
     if is_there_state():
         data = load_state_from_disk()
         cloud_type = data['cloud_type']
@@ -173,7 +175,7 @@ def down():
     """
     Halt an existing instance.
     """
-
+    cloud_config = get_cloud_config()
     if is_there_state():
         data = load_state_from_disk()
         region = data['region']
@@ -196,7 +198,7 @@ def up():
     """
     Boots a new Ubuntu instance on AWS, or start the existing instance.
     """
-
+    cloud_config = get_cloud_config()
     if is_there_state():
         data = load_state_from_disk()
         cloud_type = data['cloud_type']
@@ -248,6 +250,7 @@ def volume_metadata_exists():
 
 @task
 def configure_storage():
+    cloud_config = get_cloud_config()
     if is_there_state():
         data = load_state_from_disk()
         instance_id = data['id']
