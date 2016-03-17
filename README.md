@@ -29,24 +29,24 @@ $ docker-compose up
 
 ### How to deploy
 
-This repository contains fabric code to run this service on an AWS instance.
+This repository contains fabric code to run this service (with the MongoDB backend) on an AWS instance with the data for the service on an external EBS volume.
 
 To deploy the service on AWS:
 
-* Export the following environment variables:
-
-`AWS_KEY_PAIR` (the KEY_PAIR to use)
-`AWS_KEY_FILENAME` (the full path to your .pem file)
-`AWS_SECRET_ACCESS_KEY`
-`AWS_ACCESS_KEY_ID`
-
-* Create a virtualenv and install dependencies:
+1. Create a virtualenv and install dependencies:
 
 ```
 $ pip install --process-dependency-links -e .[dev]
 ```
 
-* Start the service:
+2. Export the following environment variables:
+
+* `AWS_KEY_PAIR` (the KEY_PAIR to use)
+* `AWS_KEY_FILENAME` (the full path to your .pem file)
+* `AWS_SECRET_ACCESS_KEY`
+* `AWS_ACCESS_KEY_ID`
+
+3. Start the service:
 
 ```
 $ fab start
