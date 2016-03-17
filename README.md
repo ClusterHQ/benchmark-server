@@ -44,8 +44,7 @@ $ pip install --process-dependency-links -e .[dev]
 * `AWS_KEY_PAIR` (the KEY_PAIR to use)
 * `AWS_KEY_FILENAME` (the full path to your .pem file)
 * `AWS_SECRET_ACCESS_KEY`
-* `AWS_ACCESS_KEY_ID` 
-
+* `AWS_ACCESS_KEY_ID`
 
 3. Start the service:
 
