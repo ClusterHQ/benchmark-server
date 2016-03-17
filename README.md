@@ -1,10 +1,8 @@
-benchmark-server
-================
+## benchmark-server
 
 A service to store and retrieve benchmarking metrics.
 
-How to run
-==========
+### How to run
 
 ```
 ./bin/start_server.sh --help
@@ -29,8 +27,7 @@ $ docker-compose up
 ```
 
 
-How to deploy
-=============
+### How to deploy
 
 This repository contains fabric code to run this service on an AWS instance.
 
