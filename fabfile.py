@@ -66,6 +66,7 @@ class BenchmarkServerCookbook():
         """
         Install required packages.
         """
+        sudo('apt-get update')
         apt_install(packages=self.required_packages())
         self.install_docker()
         self.install_docker_compose()
